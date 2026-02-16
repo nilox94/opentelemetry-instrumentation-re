@@ -67,16 +67,16 @@ After calling `re.search(r"\d+", "hello 42 world")`, the following span is creat
 }
 ```
 
-Example with `re.findall(r"\d", "a1 b2 c3")`, which includes `re.match_count`:
+Example with `re.findall(r"\d", "a1 b2 c3")`, which includes the `re.match_count` attribute.
 
-```json
+```diff
 {
   "name": "re.findall",
   "kind": "INTERNAL",
   "attributes": {
     "re.function": "findall",
     "re.pattern": "\\d+",
-    "re.string_length": 8,
++   "re.string_length": 8,
     "re.match_count": 3
   }
 }
@@ -84,26 +84,16 @@ Example with `re.findall(r"\d", "a1 b2 c3")`, which includes `re.match_count`:
 
 ## Supported Operations
 
-### Module-level Functions
-- `re.search()`
-- `re.match()`
-- `re.fullmatch()`
-- `re.split()`
-- `re.findall()` (includes `re.match_count`)
-- `re.finditer()`
-- `re.sub()`
-- `re.subn()` (includes `re.match_count`)
-
-### Compiled Pattern Methods
-All methods on `re.Pattern` objects returned by `re.compile()`:
-- `pattern.search()`
-- `pattern.match()`
-- `pattern.fullmatch()`
-- `pattern.split()`
-- `pattern.findall()` (includes `re.match_count`)
-- `pattern.finditer()`
-- `pattern.sub()`
-- `pattern.subn()` (includes `re.match_count`)
+| Operation | Module-level Function | Compiled Pattern Method | Notes |
+|-----------|----------------------|------------------------|-------|
+| `search` | `re.search()` | `pattern.search()` | |
+| `match` | `re.match()` | `pattern.match()` | |
+| `fullmatch` | `re.fullmatch()` | `pattern.fullmatch()` | |
+| `split` | `re.split()` | `pattern.split()` | |
+| `findall` | `re.findall()` | `pattern.findall()` | Includes `re.match_count` |
+| `finditer` | `re.finditer()` | `pattern.finditer()` | |
+| `sub` | `re.sub()` | `pattern.sub()` | |
+| `subn` | `re.subn()` | `pattern.subn()` | Includes `re.match_count` |
 
 ## Development
 
