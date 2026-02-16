@@ -1,0 +1,46 @@
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+[project]
+name = "opentelemetry-instrumentation-re"
+version = "0.1.0"
+description = "OpenTelemetry instrumentation for Python's re (regex) module"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Danilo Gómez", email = "danilogomez3.14@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "opentelemetry-api ~= 1.28",
+    "opentelemetry-instrumentation ~= 0.49",
+]
+
+[project.entry-points."opentelemetry_instrumentor"]
+re = "opentelemetry_instrumentation_re:ReInstrumentor"
+
+[project.urls]
+Homepage = "https://github.com/nilox94/opentelemetry-instrumentation-re"
+Repository = "https://github.com/nilox94/opentelemetry-instrumentation-re"
+
+[tool.hatch.version]
+path = "src/opentelemetry_instrumentation_re/version.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opentelemetry_instrumentation_re"]
