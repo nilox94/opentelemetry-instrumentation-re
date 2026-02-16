@@ -35,14 +35,3 @@ re = "opentelemetry_instrumentation_re:ReInstrumentor"
 [project.urls]
 Homepage = "https://github.com/nilox94/opentelemetry-instrumentation-re"
 Repository = "https://github.com/nilox94/opentelemetry-instrumentation-re"
-
-[tool.hatch.version]
-path = "src/opentelemetry_instrumentation_re/version.py"
-
-[tool.hatch.build.targets.sdist]
-include = [
-    "/src",
-]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/opentelemetry_instrumentation_re"]
