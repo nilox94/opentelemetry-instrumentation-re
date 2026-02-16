@@ -13,6 +13,22 @@ cd opentelemetry-instrumentation-re
 uv sync --extra dev
 ```
 
+## Git Hooks (prek)
+
+[prek](https://prek.j178.dev/) runs checks before each commit (Ruff and basic file checks). It’s included as a dev dependency, so after `uv sync --extra dev` you can run:
+
+```bash
+# Install git hooks and prepare hook environments (one-time per clone)
+uv run prek install --install-hooks
+```
+
+After this, every `git commit` will run:
+
+- **pre-commit-hooks** - trailing whitespace, end-of-file fixer, check YAML/TOML, debug statements
+- **Ruff** - lint (`--fix`) and format
+
+Tests are run in CI, not in the pre-commit hook. To skip hooks once: `git commit --no-verify`
+
 ## Running Tests
 
 ```bash

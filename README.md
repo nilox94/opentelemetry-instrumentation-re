@@ -97,7 +97,7 @@ Example with `re.findall(r"\d", "a1 b2 c3")`, which includes the `re.match_count
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, running tests, and linting/type checking.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, running tests, linting, and **Git hooks (prek)**.
 
 ## Contributing
 

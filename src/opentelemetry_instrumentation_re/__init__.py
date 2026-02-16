@@ -41,6 +41,7 @@ _R = TypeVar("_R")
 # For sub/subn the "string" param is the replacement; the searched string is the next positional.
 _SUB_SUBN = ("sub", "subn")
 
+
 def _search_string_for_attrs(name: str, *args: Any) -> str | bytes:
     """
     String to use for re.string_length.
@@ -97,6 +98,7 @@ def _make_wrapper(
     Returns:
         A wrapped callable that creates spans for each call.
     """
+
     @wraps(original)
     def wrapper(first: Any, *args: Any, **kwargs: Any) -> _R:
         pattern_str = get_pattern_string(first)
@@ -254,6 +256,7 @@ def _make_compile_wrapper(
     Returns:
         A wrapped compile function that returns instrumented Pattern instances.
     """
+
     @wraps(original_compile)
     def wrapper(
         pattern: str | bytes | re.Pattern[str] | re.Pattern[bytes], flags: int = 0
@@ -294,6 +297,7 @@ def _uninstrument() -> None:
         wrapper = getattr(re, name)
         if original := getattr(wrapper, "__wrapped__", None):
             setattr(re, name, original)
+
 
 class ReInstrumentor(BaseInstrumentor):
     """Instrumentor for the re (regex) module.

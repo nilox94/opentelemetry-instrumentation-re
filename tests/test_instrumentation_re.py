@@ -204,10 +204,8 @@ class TestReInstrumentor(TestBase):
         spans = self.memory_exporter.get_finished_spans()
         assert len(spans) == 1
 
-
     def test_uninstrument_without_instrument(self):
         """Test that uninstrument without prior instrument is safe."""
         instrumentor = ReInstrumentor()
         # Should not raise
         instrumentor.uninstrument()
-
