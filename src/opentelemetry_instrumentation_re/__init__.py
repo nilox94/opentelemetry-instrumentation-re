@@ -1,7 +1,11 @@
 """
-OpenTelemetry instrumentation for Python's standard library re (regex) module.
+OpenTelemetry instrumentation for re-like modules (re, regex, re2).
 
-Usage::
+Supports the stdlib re module and the optional regex and google-re2 packages.
+Use ReInstrumentor for stdlib re; RegexInstrumentor or GoogleRe2Instrumentor
+when your code uses those modules.
+
+Usage (stdlib re)::
 
     import re
     from opentelemetry_instrumentation_re import ReInstrumentor
@@ -14,6 +18,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 import re
 from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, Callable, ParamSpec, TypeVar, override
@@ -31,6 +36,8 @@ from opentelemetry_instrumentation_re._wrap import (
 )
 from opentelemetry_instrumentation_re.package import _instruments
 from opentelemetry_instrumentation_re.version import __version__
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -188,26 +195,22 @@ def _get_count_func(name: str) -> Callable[[Any], int]:
 class _PatternWrapper:
     """Wrapper for Pattern instances that instruments method calls.
 
-    This wrapper intercepts method calls on compiled regex Pattern objects
-    and creates OpenTelemetry spans for each operation. It maintains the
-    original Pattern interface while adding observability.
-
-    Attributes:
-        _pattern: The original compiled Pattern instance.
-        _tracer: The OpenTelemetry Tracer for creating spans.
-        _wrapped_methods: Dictionary mapping method names to wrapped callables.
+    Works with any re-like module (re, regex, google-re2) by taking
+    the pattern type for method lookup. Attribute access is delegated to
+    the underlying pattern (e.g. .pattern, .flags or .options).
     """
 
-    def __init__(self, pattern: re.Pattern[str] | re.Pattern[bytes], tracer: Tracer) -> None:
-        self._pattern: re.Pattern[str] | re.Pattern[bytes] = pattern
+    def __init__(self, pattern: Any, tracer: Tracer, pattern_type: type) -> None:
+        self._pattern: Any = pattern
         self._tracer: Tracer = tracer
+        self._pattern_type: type = pattern_type
         self._wrapped_methods: dict[str, Callable[..., Any]] = {}
         self._setup_wrappers()
 
     def _setup_wrappers(self) -> None:
         """Set up wrapped methods for this instance."""
         for name, has_match_count in _PATTERN_METHODS:
-            original = getattr(re.Pattern, name)
+            original = getattr(self._pattern_type, name)
             wrapped_unbound = _make_wrapper(
                 self._tracer,
                 name,
@@ -222,81 +225,69 @@ class _PatternWrapper:
             return self._wrapped_methods[name]
         return getattr(self._pattern, name)
 
-    # Delegate common Pattern attributes
     @property
     def pattern(self) -> str | bytes:
         """Return the pattern string."""
         return self._pattern.pattern
 
-    @property
-    def flags(self) -> int:
-        """Return the flags."""
-        return self._pattern.flags
-
-    @property
-    def groups(self) -> int:
-        """Return the number of groups."""
-        return self._pattern.groups
-
-    @property
-    def groupindex(self) -> dict[str, int]:
-        """Return the group index."""
-        return dict(self._pattern.groupindex)  # Convert Mapping to dict
-
 
 def _make_compile_wrapper(
-    tracer: Tracer, original_compile: Callable[..., re.Pattern[str] | re.Pattern[bytes]]
+    tracer: Tracer,
+    original_compile: Callable[..., Any],
+    pattern_type: type,
 ) -> Callable[..., _PatternWrapper]:
-    """Wrap re.compile to instrument Pattern instances.
+    """Wrap module.compile to instrument Pattern instances.
 
-    Args:
-        tracer: The OpenTelemetry Tracer instance.
-        original_compile: The original re.compile function.
-
-    Returns:
-        A wrapped compile function that returns instrumented Pattern instances.
+    Accepts *args, **kwargs so it works with re/regex (pattern, flags=0)
+    and google-re2 (pattern, options=None).
     """
 
     @wraps(original_compile)
-    def wrapper(
-        pattern: str | bytes | re.Pattern[str] | re.Pattern[bytes], flags: int = 0
-    ) -> _PatternWrapper:
-        compiled: re.Pattern[str] | re.Pattern[bytes] = original_compile(pattern, flags)
-        return _PatternWrapper(compiled, tracer)
+    def wrapper(*args: Any, **kwargs: Any) -> _PatternWrapper:
+        compiled = original_compile(*args, **kwargs)
+        return _PatternWrapper(compiled, tracer, pattern_type)
 
     return wrapper
 
 
-def _instrument(tracer: Tracer) -> None:
-    """Patch re module and Pattern methods.
+def _instrument_module(
+    module: Any,
+    tracer: Tracer,
+    get_pattern_type: Callable[[], type],
+) -> None:
+    """Patch a re-like module with instrumented functions and compile.
 
-    This function replaces module-level re functions and re.compile with
-    instrumented versions that create OpenTelemetry spans. Wrappers use
-    functools.wraps so originals can be restored via __wrapped__.
+    Args:
+        module: The module to patch (re, regex, or google-re2).
+        tracer: The OpenTelemetry Tracer instance.
+        get_pattern_type: Callable that returns the compiled pattern type
+            for this module (e.g. re.Pattern or type(module.compile(''))).
     """
+    pattern_type = get_pattern_type()
     for name, has_match_count in _MODULE_FUNCTIONS:
-        original = getattr(re, name)
+        original = getattr(module, name)
         wrapped = _make_wrapper(
             tracer,
             name,
             original,
             get_count=_get_count_func(name) if has_match_count else None,
         )
-        setattr(re, name, wrapped)
+        setattr(module, name, wrapped)
 
-    re.compile = _make_compile_wrapper(tracer, re.compile)  # type: ignore[assignment]
+    original_compile = module.compile
+    module.compile = _make_compile_wrapper(tracer, original_compile, pattern_type)
 
 
-def _uninstrument() -> None:
-    """Restore original re module functions.
+def _uninstrument_module(module: Any) -> None:
+    """Restore original functions on a previously instrumented module.
 
-    Uses __wrapped__ (set by functools.wraps) to restore each patched
-    member. Safe to call multiple times; no-op if not instrumented.
+    Uses __wrapped__ (set by functools.wraps). Safe to call multiple times;
+    no-op if not instrumented.
     """
     for name in _MODULE_NAMES:
-        wrapper = getattr(re, name)
-        if original := getattr(wrapper, "__wrapped__", None):
-            setattr(re, name, original)
+        wrapper = getattr(module, name, None)
+        if wrapper is not None and (original := getattr(wrapper, "__wrapped__", None)):
+            setattr(module, name, original)
 
 
 class ReInstrumentor(BaseInstrumentor):
@@ -343,7 +334,10 @@ class ReInstrumentor(BaseInstrumentor):
             tracer_provider=tracer_provider,
             schema_url="https://opentelemetry.io/schemas/1.11.0",
         )
-        _instrument(tracer)
+        try:
+            _instrument_module(re, tracer, lambda: re.Pattern)
+        except Exception as e:
+            logger.warning("Failed to instrument re: %s", e, exc_info=True)
 
     @override
     def _uninstrument(self, **kwargs: Any) -> None:
@@ -354,7 +348,111 @@ class ReInstrumentor(BaseInstrumentor):
         Args:
             **kwargs: Optional keyword arguments (unused).
         """
-        _uninstrument()
+        _uninstrument_module(re)
 
 
-__all__ = ["ReInstrumentor"]
+def _instrument_regex(tracer: Tracer) -> None:
+    """Instrument the regex module if importable."""
+    try:
+        import regex
+    except ImportError as e:
+        logger.debug("Skipping regex instrumentation: module not installed (%s)", e)
+        return
+    try:
+        _instrument_module(regex, tracer, lambda: type(regex.compile("")))
+    except Exception as e:
+        logger.warning("Failed to instrument regex: %s", e, exc_info=True)
+
+
+def _uninstrument_regex() -> None:
+    """Restore the regex module if it was instrumented."""
+    try:
+        import regex
+    except ImportError as e:
+        logger.debug("Skipping regex uninstrument: module not installed (%s)", e)
+        return
+    _uninstrument_module(regex)
+
+
+def _instrument_google_re2(tracer: Tracer) -> None:
+    """Instrument the re2 module (google-re2 package) if importable."""
+    try:
+        import re2
+    except ImportError as e:
+        logger.debug("Skipping google-re2 instrumentation: module not installed (%s)", e)
+        return
+    try:
+        _instrument_module(re2, tracer, lambda: type(re2.compile("")))
+    except Exception as e:
+        logger.warning("Failed to instrument google-re2: %s", e, exc_info=True)
+
+
+def _uninstrument_google_re2() -> None:
+    """Restore the re2 module if it was instrumented (google-re2)."""
+    try:
+        import re2
+    except ImportError as e:
+        logger.debug("Skipping google-re2 uninstrument: module not installed (%s)", e)
+        return
+    _uninstrument_module(re2)
+
+
+class RegexInstrumentor(BaseInstrumentor):
+    """Instrumentor for the regex module (PyPI regex).
+
+    Only instruments if the regex module is installed. Use when your code
+    uses ``import regex`` instead of stdlib ``re``.
+    """
+
+    @override
+    def instrumentation_dependencies(self) -> Collection[str]:
+        return _instruments
+
+    @override
+    def _instrument(self, **kwargs: Any) -> None:
+        tracer_provider = kwargs.get("tracer_provider")
+        tracer = get_tracer(
+            __name__,
+            __version__,
+            tracer_provider=tracer_provider,
+            schema_url="https://opentelemetry.io/schemas/1.11.0",
+        )
+        _instrument_regex(tracer)
+
+    @override
+    def _uninstrument(self, **kwargs: Any) -> None:
+        _uninstrument_regex()
+
+
+class GoogleRe2Instrumentor(BaseInstrumentor):
+    """Instrumentor for the re2 module from the google-re2 package.
+
+    Only instruments if google-re2 is installed (module name is also re2).
+    Use when your code uses the official Google RE2 Python bindings.
+    """
+
+    @override
+    def instrumentation_dependencies(self) -> Collection[str]:
+        return _instruments
+
+    @override
+    def _instrument(self, **kwargs: Any) -> None:
+        tracer_provider = kwargs.get("tracer_provider")
+        tracer = get_tracer(
+            __name__,
+            __version__,
+            tracer_provider=tracer_provider,
+            schema_url="https://opentelemetry.io/schemas/1.11.0",
+        )
+        _instrument_google_re2(tracer)
+
+    @override
+    def _uninstrument(self, **kwargs: Any) -> None:
+        _uninstrument_google_re2()
+
+
+__all__ = [
+    "ReInstrumentor",
+    "RegexInstrumentor",
+    "GoogleRe2Instrumentor",
+]

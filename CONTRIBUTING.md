@@ -9,8 +9,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 git clone https://github.com/nilox94/opentelemetry-instrumentation-re.git
 cd opentelemetry-instrumentation-re
 
-# Install dependencies
-uv sync --extra dev
+uv sync --all-extras
 ```
 
 ## Git Hooks (prek)

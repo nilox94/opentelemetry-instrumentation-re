@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import override
+from typing import Any, override
 
+import pytest
 from opentelemetry.test.test_base import TestBase
 
-from opentelemetry_instrumentation_re import ReInstrumentor
+from opentelemetry_instrumentation_re import (
+    GoogleRe2Instrumentor,
+    RegexInstrumentor,
+    ReInstrumentor,
+)
 
 
 class TestReInstrumentor(TestBase):
@@ -209,3 +214,137 @@ class TestReInstrumentor(TestBase):
         instrumentor = ReInstrumentor()
         # Should not raise
         instrumentor.uninstrument()
+
+
+def _regex_module():
+    """Import regex if available, otherwise skip."""
+    try:
+        import regex
+
+        return regex
+    except ImportError as e:
+        pytest.skip(f"regex module not installed: {e}")
+
+
+class TestRegexInstrumentor(TestBase):
+    """Test suite for RegexInstrumentor (skipped if regex not installed)."""
+
+    _regex: Any  # pyright: ignore[reportUninitializedInstanceVariable]
+
+    @override
+    def setUp(self):
+        super().setUp()
+        self._regex = _regex_module()
+        RegexInstrumentor().instrument()
+
+    @override
+    def tearDown(self):
+        RegexInstrumentor().uninstrument()
+        super().tearDown()
+
+    def test_regex_search_creates_span(self):
+        """Instrumenting and calling regex.search creates a span."""
+        regex = self._regex
+        m = regex.search(r"\d+", "hello 42 world")
+        assert m is not None
+        assert m.group() == "42"
+        spans = self.memory_exporter.get_finished_spans()
+        assert len(spans) == 1
+        span = spans[0]
+        assert span.name == "re.search"
+        assert span.attributes is not None
+        assert span.attributes.get("re.function") == "search"
+        assert span.attributes.get("re.pattern") == "\\d+"
+        assert span.attributes.get("re.string_length") == 14
+
+    def test_regex_findall_sets_match_count(self):
+        """regex.findall sets re.match_count."""
+        regex = self._regex
+        result = regex.findall(r"\d+", "a1 b2 c3")
+        assert result == ["1", "2", "3"]
+        spans = self.memory_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert spans[0].attributes is not None
+        assert spans[0].attributes.get("re.match_count") == 3
+
+    def test_regex_compiled_pattern_search(self):
+        """Compiled regex pattern.search is instrumented."""
+        regex = self._regex
+        pat = regex.compile(r"\w+")
+        _ = pat.search("hello world")
+        spans = self.memory_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert spans[0].attributes is not None
+        assert spans[0].attributes.get("re.pattern") == "\\w+"
+
+    def test_regex_sub_instrumented(self):
+        """regex.sub is instrumented."""
+        regex = self._regex
+        result = regex.sub(r"\d+", "0", "a1b2c3")
+        assert result == "a0b0c0"
+        spans = self.memory_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert spans[0].name == "re.sub"
+
+
+def _re2_module():
+    """Import re2 (google-re2) if available, otherwise skip."""
+    try:
+        import re2
+
+        return re2
+    except ImportError as e:
+        pytest.skip(f"re2 module (google-re2) not installed: {e}")
+
+
+class TestGoogleRe2Instrumentor(TestBase):
+    """Test suite for GoogleRe2Instrumentor (skipped if google-re2 not installed)."""
+
+    _re2: Any  # pyright: ignore[reportUninitializedInstanceVariable]
+
+    @override
+    def setUp(self):
+        super().setUp()
+        self._re2 = _re2_module()
+        GoogleRe2Instrumentor().instrument()
+
+    @override
+    def tearDown(self):
+        GoogleRe2Instrumentor().uninstrument()
+        super().tearDown()
+
+    def test_google_re2_search_creates_span(self):
+        """Instrumenting and calling re2.search (google-re2) creates a span."""
+        re2 = self._re2
+        m = re2.search(r"\d+", "hello 42 world")
+        assert m is not None
+        assert m.group() == "42"
+        spans = self.memory_exporter.get_finished_spans()
+        # google-re2 implements search() as compile().search(), so we may get 2 spans
+        assert len(spans) >= 1
+        span = next(s for s in spans if s.name == "re.search")
+        assert span.attributes is not None
+        assert span.attributes.get("re.function") == "search"
+        assert span.attributes.get("re.pattern") == "\\d+"
+        assert span.attributes.get("re.string_length") == 14
+
+    def test_google_re2_findall_sets_match_count(self):
+        """re2.findall (google-re2) sets re.match_count."""
+        re2 = self._re2
+        result = re2.findall(r"\d+", "a1 b2 c3")
+        assert result == ["1", "2", "3"]
+        spans = self.memory_exporter.get_finished_spans()
+        assert len(spans) >= 1
+        span = next(s for s in spans if s.attributes and s.attributes.get("re.match_count") == 3)
+        assert span.attributes is not None
+        assert span.attributes.get("re.match_count") == 3
+
+    def test_google_re2_compiled_pattern_search(self):
+        """Compiled re2 pattern.search (google-re2) is instrumented."""
+        re2 = self._re2
+        pat = re2.compile(r"\w+")
+        _ = pat.search("hello world")
+        spans = self.memory_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert spans[0].attributes is not None
+        assert spans[0].attributes.get("re.pattern") == "\\w+"
