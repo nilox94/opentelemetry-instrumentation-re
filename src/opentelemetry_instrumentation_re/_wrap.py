@@ -9,6 +9,7 @@ RE_FUNCTION = "re.function"
 RE_STRING_LENGTH = "re.string_length"
 RE_MATCH_COUNT = "re.match_count"
 
+
 def get_pattern_string(pattern: str | bytes | re.Pattern[str] | re.Pattern[bytes]) -> str:
     """Extract pattern string from pattern (str, bytes, or Pattern).
 

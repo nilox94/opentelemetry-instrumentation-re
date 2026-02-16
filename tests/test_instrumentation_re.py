@@ -74,13 +74,16 @@ class TestReInstrumentor(TestBase):
         assert span.attributes.get("re.pattern") == "\\w+"
 
     def test_instrument_re_sub(self):
-        """re.sub is instrumented."""
+        """re.sub is instrumented and re.string_length is the searched string length."""
         result = re.sub(r"\d+", "0", "a1b2c3")
 
         assert result == "a0b0c0"
         spans = self.memory_exporter.get_finished_spans()
         assert len(spans) == 1
-        assert spans[0].name == "re.sub"
+        span = spans[0]
+        assert span.name == "re.sub"
+        assert span.attributes is not None
+        assert span.attributes.get("re.string_length") == 6  # len("a1b2c3"), not repl
 
     def test_instrument_re_subn_sets_match_count(self):
         """re.subn sets re.match_count."""

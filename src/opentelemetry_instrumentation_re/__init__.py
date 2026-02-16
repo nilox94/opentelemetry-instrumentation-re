@@ -15,10 +15,11 @@ Usage::
 from __future__ import annotations
 
 import re
-from functools import partial
-from typing import TYPE_CHECKING, Any, Callable
+from functools import partial, wraps
+from typing import TYPE_CHECKING, Any, Callable, ParamSpec, TypeVar, override
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.sdk.resources import Attributes
 from opentelemetry.trace import SpanKind, Tracer, get_tracer
 
 from opentelemetry_instrumentation_re._wrap import (
@@ -34,30 +35,40 @@ from opentelemetry_instrumentation_re.version import __version__
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-# Marker to avoid double uninstrument
-_INSTRUMENTED_MARKER = "_opentelemetry_instrumentation_re_applied"
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
-# Saved originals for uninstrument
-_originals: dict[str, Any] = {}
+# For sub/subn the "string" param is the replacement; the searched string is the next positional.
+_SUB_SUBN = ("sub", "subn")
+
+def _search_string_for_attrs(name: str, *args: Any) -> str | bytes:
+    """
+    String to use for re.string_length.
+    For sub/subn it's the third positional (args[0]).
+    NB: args are sliced to exclude the first positional arg (pattern).
+    """
+    if name in _SUB_SUBN and args:
+        # pattern | repl, (string), ...
+        return args[1]
+    # pattern | (string), ...
+    return args[0]
 
 
 def _instrument_call(
     tracer: Tracer,
     name: str,
-    attributes: dict[str, Any],
-    call_original: Callable[[], Any],
-    result_attributes: Callable[[Any], dict[str, Any]] | None = None,
-) -> Any:
+    attributes: Attributes,
+    call_original: Callable[[], _R],
+    result_attributes: Callable[[_R], dict[str, Any]] | None = None,
+) -> _R:
     """Run call_original inside a span, setting attributes. Minimal error handling (SDK sets status)."""
     with tracer.start_as_current_span(
         f"re.{name}",
         kind=SpanKind.INTERNAL,
     ) as span:
         if span.is_recording():
-            for key, value in attributes.items():
-                if value is not None:
-                    span.set_attribute(key, value)
-        result = call_original()
+            span.set_attributes(attributes)
+        result: _R = call_original()
         if span.is_recording() and result_attributes is not None:
             for key, value in result_attributes(result).items():
                 if value is not None:
@@ -65,165 +76,61 @@ def _instrument_call(
         return result
 
 
-def _make_module_wrapper(
+def _make_wrapper(
     tracer: Tracer,
     name: str,
-    original: Callable[..., Any],
-) -> Callable[..., Any]:
-    """Build a wrapper for a module-level re function (e.g. re.search).
+    original: Callable[..., _R],
+    *,
+    get_count: Callable[[_R], int] | None = None,
+) -> Callable[..., _R]:
+    """Build a single wrapper for re module functions or Pattern methods.
+
+    First argument is always the pattern (module) or self (Pattern); both support
+    get_pattern_string() and the same attribute logic.
 
     Args:
         tracer: The OpenTelemetry Tracer instance.
-        name: The function name (e.g., "search", "match").
-        original: The original re module function to wrap.
+        name: The function/method name (e.g. "search", "findall").
+        original: The original callable to wrap.
+        get_count: If set, span attribute re.match_count is set from get_count(result).
 
     Returns:
-        A wrapped function that creates spans for each call.
+        A wrapped callable that creates spans for each call.
     """
+    @wraps(original)
+    def wrapper(first: Any, *args: Any, **kwargs: Any) -> _R:
+        pattern_str = get_pattern_string(first)
+        search_str = _search_string_for_attrs(name, *args)
 
-    def wrapper(pattern: Any, string: Any, *args: Any, **kwargs: Any) -> Any:
         def get_attrs() -> dict[str, Any]:
-            attrs: dict[str, Any] = {RE_FUNCTION: name}
-            if string is not None:
-                attrs[RE_STRING_LENGTH] = len(string)
-            pattern_str = get_pattern_string(pattern)
-            if pattern_str is not None:
-                attrs[RE_PATTERN] = pattern_str
+            attrs: dict[str, Any] = {
+                RE_FUNCTION: name,
+                RE_STRING_LENGTH: len(search_str),
+                RE_PATTERN: pattern_str,
+            }
             return attrs
+
+        def call_original() -> _R:
+            return original(first, *args, **kwargs)
+
+        if get_count is not None:
+            count_fn = get_count
+
+            def result_attrs(r: _R) -> dict[str, Any]:
+                return {RE_MATCH_COUNT: count_fn(r)}
+
+            result_attrs_fn: Callable[[_R], dict[str, Any]] | None = result_attrs
+        else:
+            result_attrs_fn = None
 
         return _instrument_call(
             tracer,
             name,
             get_attrs(),
-            lambda: original(pattern, string, *args, **kwargs),
-            None,
+            call_original,
+            result_attrs_fn,
         )
 
-    # Set __wrapped__ for introspection and unwrapping
-    setattr(wrapper, "__wrapped__", original)  # noqa: B010
-    setattr(wrapper, _INSTRUMENTED_MARKER, True)  # noqa: B010
-    return wrapper
-
-
-def _make_module_wrapper_with_match_count(
-    tracer: Tracer,
-    name: str,
-    original: Callable[..., Any],
-    get_count: Callable[[Any], int],
-) -> Callable[..., Any]:
-    """Build a wrapper for findall or subn that sets re.match_count from result."""
-
-    def wrapper(pattern: Any, string: Any, *args: Any, **kwargs: Any) -> Any:
-        def get_attrs() -> dict[str, Any]:
-            attrs: dict[str, Any] = {RE_FUNCTION: name}
-            if string is not None:
-                attrs[RE_STRING_LENGTH] = len(string)
-            pattern_str = get_pattern_string(pattern)
-            if pattern_str is not None:
-                attrs[RE_PATTERN] = pattern_str
-            return attrs
-
-        def result_attrs(result: Any) -> dict[str, Any]:
-            return {RE_MATCH_COUNT: get_count(result)}
-
-        return _instrument_call(
-            tracer,
-            name,
-            get_attrs(),
-            lambda: original(pattern, string, *args, **kwargs),
-            result_attrs,
-        )
-
-    # Set __wrapped__ for introspection and unwrapping
-    setattr(wrapper, "__wrapped__", original)  # noqa: B010
-    setattr(wrapper, _INSTRUMENTED_MARKER, True)  # noqa: B010
-    return wrapper
-
-
-def _make_pattern_wrapper(
-    tracer: Tracer,
-    name: str,
-    original: Callable[..., Any],
-) -> Callable[..., Any]:
-    """Build a wrapper for a Pattern method (e.g. Pattern.search).
-
-    Args:
-        tracer: The OpenTelemetry Tracer instance.
-        name: The method name (e.g., "search", "match").
-        original: The original Pattern method to wrap.
-
-    Returns:
-        A wrapped method that creates spans for each call.
-    """
-
-    def wrapper(self: Any, string: Any, *args: Any, **kwargs: Any) -> Any:
-        pattern_str = getattr(self, "pattern", None)
-
-        def get_attrs() -> dict[str, Any]:
-            attrs: dict[str, Any] = {RE_FUNCTION: name}
-            if string is not None:
-                attrs[RE_STRING_LENGTH] = len(string)
-            if pattern_str is not None:
-                attrs[RE_PATTERN] = pattern_str
-            return attrs
-
-        return _instrument_call(
-            tracer,
-            name,
-            get_attrs(),
-            lambda: original(self, string, *args, **kwargs),
-            None,
-        )
-
-    # Set __wrapped__ for introspection and unwrapping
-    setattr(wrapper, "__wrapped__", original)  # noqa: B010
-    setattr(wrapper, _INSTRUMENTED_MARKER, True)  # noqa: B010
-    return wrapper
-
-
-def _make_pattern_wrapper_with_match_count(
-    tracer: Tracer,
-    name: str,
-    original: Callable[..., Any],
-    get_count: Callable[[Any], int],
-) -> Callable[..., Any]:
-    """Build a wrapper for Pattern.findall or Pattern.subn that sets re.match_count.
-
-    Args:
-        tracer: The OpenTelemetry Tracer instance.
-        name: The method name ("findall" or "subn").
-        original: The original Pattern method to wrap.
-        get_count: Function to extract match count from the result.
-
-    Returns:
-        A wrapped method that creates spans with match_count attribute.
-    """
-
-    def wrapper(self: Any, string: Any, *args: Any, **kwargs: Any) -> Any:
-        pattern_str = getattr(self, "pattern", None)
-
-        def get_attrs() -> dict[str, Any]:
-            attrs: dict[str, Any] = {RE_FUNCTION: name}
-            if string is not None:
-                attrs[RE_STRING_LENGTH] = len(string)
-            if pattern_str is not None:
-                attrs[RE_PATTERN] = pattern_str
-            return attrs
-
-        def result_attrs(result: Any) -> dict[str, Any]:
-            return {RE_MATCH_COUNT: get_count(result)}
-
-        return _instrument_call(
-            tracer,
-            name,
-            get_attrs(),
-            lambda: original(self, string, *args, **kwargs),
-            result_attrs,
-        )
-
-    # Set __wrapped__ for introspection and unwrapping
-    setattr(wrapper, "__wrapped__", original)  # noqa: B010
-    setattr(wrapper, _INSTRUMENTED_MARKER, True)  # noqa: B010
     return wrapper
 
 
@@ -251,6 +158,9 @@ _PATTERN_METHODS = [
     ("subn", True),  # has match_count
 ]
 
+# Names of re module members we patch (for uninstrument via __wrapped__)
+_MODULE_NAMES = [name for name, _ in _MODULE_FUNCTIONS] + ["compile"]
+
 
 def _get_count_func(name: str) -> Callable[[Any], int]:
     """Get count extraction function for findall/subn operations.
@@ -265,9 +175,11 @@ def _get_count_func(name: str) -> Callable[[Any], int]:
     """
     if name == "findall":
         return len
+
     # subn returns (new_string, count)
     def get_subn_count(result: tuple[str, int]) -> int:
         return result[1]
+
     return get_subn_count
 
 
@@ -284,24 +196,22 @@ class _PatternWrapper:
         _wrapped_methods: Dictionary mapping method names to wrapped callables.
     """
 
-    def __init__(self, pattern: Any, tracer: Tracer) -> None:
-        self._pattern = pattern
-        self._tracer = tracer
+    def __init__(self, pattern: re.Pattern[str] | re.Pattern[bytes], tracer: Tracer) -> None:
+        self._pattern: re.Pattern[str] | re.Pattern[bytes] = pattern
+        self._tracer: Tracer = tracer
         self._wrapped_methods: dict[str, Callable[..., Any]] = {}
         self._setup_wrappers()
 
     def _setup_wrappers(self) -> None:
         """Set up wrapped methods for this instance."""
         for name, has_match_count in _PATTERN_METHODS:
-            # Get the unbound method from the Pattern class
             original = getattr(re.Pattern, name)
-            if has_match_count:
-                wrapped_unbound = _make_pattern_wrapper_with_match_count(
-                    self._tracer, name, original, _get_count_func(name)
-                )
-            else:
-                wrapped_unbound = _make_pattern_wrapper(self._tracer, name, original)
-            # Bind the wrapper to self._pattern using partial
+            wrapped_unbound = _make_wrapper(
+                self._tracer,
+                name,
+                original,
+                get_count=_get_count_func(name) if has_match_count else None,
+            )
             self._wrapped_methods[name] = partial(wrapped_unbound, self._pattern)
 
     def __getattr__(self, name: str) -> Any:
@@ -312,7 +222,7 @@ class _PatternWrapper:
 
     # Delegate common Pattern attributes
     @property
-    def pattern(self) -> str:
+    def pattern(self) -> str | bytes:
         """Return the pattern string."""
         return self._pattern.pattern
 
@@ -329,10 +239,12 @@ class _PatternWrapper:
     @property
     def groupindex(self) -> dict[str, int]:
         """Return the group index."""
-        return self._pattern.groupindex
+        return dict(self._pattern.groupindex)  # Convert Mapping to dict
 
 
-def _make_compile_wrapper(tracer: Tracer, original_compile: Callable[..., Any]) -> Callable[..., Any]:
+def _make_compile_wrapper(
+    tracer: Tracer, original_compile: Callable[..., re.Pattern[str] | re.Pattern[bytes]]
+) -> Callable[..., _PatternWrapper]:
     """Wrap re.compile to instrument Pattern instances.
 
     Args:
@@ -342,13 +254,13 @@ def _make_compile_wrapper(tracer: Tracer, original_compile: Callable[..., Any]) 
     Returns:
         A wrapped compile function that returns instrumented Pattern instances.
     """
-    def wrapper(pattern: Any, flags: int = 0) -> Any:
-        compiled = original_compile(pattern, flags)
+    @wraps(original_compile)
+    def wrapper(
+        pattern: str | bytes | re.Pattern[str] | re.Pattern[bytes], flags: int = 0
+    ) -> _PatternWrapper:
+        compiled: re.Pattern[str] | re.Pattern[bytes] = original_compile(pattern, flags)
         return _PatternWrapper(compiled, tracer)
 
-    # Set __wrapped__ for introspection and unwrapping
-    setattr(wrapper, "__wrapped__", original_compile)  # noqa: B010
-    setattr(wrapper, _INSTRUMENTED_MARKER, True)  # noqa: B010
     return wrapper
 
 
@@ -356,44 +268,32 @@ def _instrument(tracer: Tracer) -> None:
     """Patch re module and Pattern methods.
 
     This function replaces module-level re functions and re.compile with
-    instrumented versions that create OpenTelemetry spans.
-
-    Args:
-        tracer: The OpenTelemetry Tracer instance to use for creating spans.
+    instrumented versions that create OpenTelemetry spans. Wrappers use
+    functools.wraps so originals can be restored via __wrapped__.
     """
-    # Module-level functions
     for name, has_match_count in _MODULE_FUNCTIONS:
         original = getattr(re, name)
-        _originals[name] = original
-        if has_match_count:
-            wrapped = _make_module_wrapper_with_match_count(
-                tracer, name, original, _get_count_func(name)
-            )
-        else:
-            wrapped = _make_module_wrapper(tracer, name, original)
+        wrapped = _make_wrapper(
+            tracer,
+            name,
+            original,
+            get_count=_get_count_func(name) if has_match_count else None,
+        )
         setattr(re, name, wrapped)
 
-    # Patch re.compile to wrap Pattern instances
-    _originals["compile"] = re.compile
-    re.compile = _make_compile_wrapper(tracer, re.compile)
+    re.compile = _make_compile_wrapper(tracer, re.compile)  # type: ignore[assignment]
 
 
 def _uninstrument() -> None:
-    """Restore original re module and Pattern methods.
+    """Restore original re module functions.
 
-    This function undoes the instrumentation by restoring the original
-    re module functions and re.compile. Safe to call multiple times.
+    Uses __wrapped__ (set by functools.wraps) to restore each patched
+    member. Safe to call multiple times; no-op if not instrumented.
     """
-    if not _originals:
-        return
-    # Restore module-level functions
-    for name, _ in _MODULE_FUNCTIONS:
-        if name in _originals:
-            setattr(re, name, _originals.pop(name))
-    # Restore re.compile
-    if "compile" in _originals:
-        re.compile = _originals.pop("compile")
-
+    for name in _MODULE_NAMES:
+        wrapper = getattr(re, name)
+        if original := getattr(wrapper, "__wrapped__", None):
+            setattr(re, name, original)
 
 class ReInstrumentor(BaseInstrumentor):
     """Instrumentor for the re (regex) module.
@@ -419,9 +319,11 @@ class ReInstrumentor(BaseInstrumentor):
     See :class:`opentelemetry.instrumentation.instrumentor.BaseInstrumentor`.
     """
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def _instrument(self, **kwargs: Any) -> None:
         """Instrument the re module.
 
@@ -439,6 +341,7 @@ class ReInstrumentor(BaseInstrumentor):
         )
         _instrument(tracer)
 
+    @override
     def _uninstrument(self, **kwargs: Any) -> None:
         """Uninstrument the re module.
 
@@ -450,4 +353,4 @@ class ReInstrumentor(BaseInstrumentor):
         _uninstrument()
 
 
-__all__ = ["ReInstrumentor", "__version__"]
+__all__ = ["ReInstrumentor"]
