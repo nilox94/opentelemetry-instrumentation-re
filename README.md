@@ -97,13 +97,12 @@ Example with `re.findall(r"\d", "a1 b2 c3")`, which includes the `re.match_count
 
 ## Development
 
-### Setup
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, running tests, and linting/type checking.
 
-```bash
-# Clone the repository
-git clone https://github.com/nilox94/opentelemetry-instrumentation-re.git
-cd opentelemetry-instrumentation-re
+## Contributing
 
-# Install dependencies
-uv sync --extra dev
-```
+Contributions are welcome! Please feel free to submit a Pull Request. See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow.
+
+## License
+
+Apache-2.0

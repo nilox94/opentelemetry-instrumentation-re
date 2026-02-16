@@ -1,0 +1,11 @@
+{
+  "include": ["src"],
+  "exclude": ["**/__pycache__"],
+  "reportMissingTypeStubs": "warning",
+  "reportAny": "none",
+  "reportExplicitAny": "none",
+  "reportImplicitRelativeImport": "error",
+  "reportInvalidCast": "error",
+  "reportUnsafeMultipleInheritance": "error",
+  "reportPrivateUsage": "none",
+}

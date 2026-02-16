@@ -28,6 +28,17 @@ dependencies = [
     "opentelemetry-instrumentation ~= 0.49",
 ]
 
+[project.optional-dependencies]
+test = [
+    "opentelemetry-sdk>=1.28.0",
+    "opentelemetry-test-utils>=0.49.0",
+    "pytest>=7.0.0",
+]
+dev = [
+    "basedpyright>=1.38.0",
+    "ruff>=0.1.0",
+]
+
 [project.entry-points."opentelemetry_instrumentor"]
 re = "opentelemetry_instrumentation_re:ReInstrumentor"
 
