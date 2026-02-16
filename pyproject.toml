@@ -7,6 +7,7 @@ name = "opentelemetry-instrumentation-re"
 version = "0.1.0"
 description = "OpenTelemetry instrumentation for Python's re (regex) module"
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.9"
 authors = [
     { name = "Danilo Gómez", email = "danilogomez3.14@gmail.com" },
@@ -14,6 +15,7 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
