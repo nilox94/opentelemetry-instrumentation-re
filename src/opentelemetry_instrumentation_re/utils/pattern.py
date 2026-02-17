@@ -1,28 +1,8 @@
-"""Pattern extraction and protocol for re instrumentation.
-
-Attribute names are defined in _semconv (semantic conventions). This module
-re-exports them for backward compatibility and provides pattern extraction.
-"""
+"""Pattern extraction and protocol for re instrumentation."""
 
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
-
-from opentelemetry_instrumentation_re.utils.semconv import (
-    RE_FUNCTION,
-    RE_MATCH_COUNT,
-    RE_PATTERN,
-    RE_STRING_LENGTH,
-)
-
-__all__ = [
-    "RE_FUNCTION",
-    "RE_MATCH_COUNT",
-    "RE_PATTERN",
-    "RE_STRING_LENGTH",
-    "PatternLike",
-    "get_pattern_string",
-]
 
 
 @runtime_checkable

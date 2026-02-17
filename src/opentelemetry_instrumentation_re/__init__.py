@@ -16,26 +16,12 @@ Usage (stdlib re)::
     re.compile(r"\\w+").findall("a b c")
 """
 
-from __future__ import annotations
-
 from opentelemetry_instrumentation_re.instrumentors.google_re2 import GoogleRe2Instrumentor
 from opentelemetry_instrumentation_re.instrumentors.re import ReInstrumentor
 from opentelemetry_instrumentation_re.instrumentors.regex import RegexInstrumentor
-from opentelemetry_instrumentation_re.utils.semconv import (
-    RE_FUNCTION,
-    RE_LIBRARY_NAME,
-    RE_MATCH_COUNT,
-    RE_PATTERN,
-    RE_STRING_LENGTH,
-)
 from opentelemetry_instrumentation_re.version import __version__
 
 __all__ = [
-    "RE_FUNCTION",
-    "RE_LIBRARY_NAME",
-    "RE_MATCH_COUNT",
-    "RE_PATTERN",
-    "RE_STRING_LENGTH",
     "ReInstrumentor",
     "RegexInstrumentor",
     "GoogleRe2Instrumentor",

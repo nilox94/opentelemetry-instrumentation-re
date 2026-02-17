@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
 from opentelemetry.trace import SpanKind
 
-from opentelemetry_instrumentation_re.utils.pattern import (
+from opentelemetry_instrumentation_re.utils.pattern import get_pattern_string
+from opentelemetry_instrumentation_re.utils.semconv import (
     RE_FUNCTION,
+    RE_LIBRARY_NAME,
     RE_MATCH_COUNT,
     RE_PATTERN,
     RE_STRING_LENGTH,
-    get_pattern_string,
 )
-from opentelemetry_instrumentation_re.utils.semconv import RE_LIBRARY_NAME
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.resources import Attributes
