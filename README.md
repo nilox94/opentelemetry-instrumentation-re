@@ -1,5 +1,7 @@
 # OpenTelemetry instrumentation for Python regex libraries
 
+[![CI](https://github.com/nilox94/opentelemetry-instrumentation-re/actions/workflows/ci.yml/badge.svg)](https://github.com/nilox94/opentelemetry-instrumentation-re/actions/workflows/ci.yml)
+
 This library provides [OpenTelemetry instrumentation](https://opentelemetry.io/docs/concepts/instrumentation/) for three Python regex libraries: the standard library [`re`](https://docs.python.org/3/library/re.html), and the [`regex`](https://pypi.org/project/regex/) and [`google-re2`](https://pypi.org/project/google-re2/) packages.
 It emits spans for all regex operations (see [Supported Operations](#supported-operations)) and for compiled pattern methods.
 
