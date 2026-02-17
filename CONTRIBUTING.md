@@ -2,6 +2,8 @@
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+We use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages; the format is used by our release process to determine version bumps.
+
 ## Development Setup
 
 ```bash
