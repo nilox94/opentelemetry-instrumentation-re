@@ -11,7 +11,7 @@ from __future__ import annotations
 RE_PATTERN = "re.pattern"
 """The regex pattern string (or bytes decoded to string)."""
 
-RE_FUNCTION = "re.function"
+RE_OPERATION = "re.operation"
 """The operation name: search, match, fullmatch, split, finditer, findall, sub, subn."""
 
 RE_STRING_LENGTH = "re.string_length"

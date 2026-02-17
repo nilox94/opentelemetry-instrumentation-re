@@ -46,7 +46,7 @@ ReInstrumentor().uninstrument()
 
 The following attributes are added to spans:
 
-- `re.function` - operation name (e.g. `search`, `match`, `sub`, `findall`).
+- `re.operation` - operation name (e.g. `search`, `match`, `sub`, `findall`).
 - `re.pattern` - full pattern string (may contain sensitive data).
 - `re.string_length` - length of the input string.
 - `re.match_count` - number of matches (only for `findall` and `subn` operations).
@@ -60,7 +60,7 @@ After calling `re.search(r"\d+", "hello 42 world")`, the following span is creat
   "name": "re.search",
   "kind": "INTERNAL",
   "attributes": {
-    "re.function": "search",
+    "re.operation": "search",
     "re.pattern": "\\d+",
     "re.string_length": 14
   }
@@ -74,7 +74,7 @@ Example with `re.findall(r"\d", "a1 b2 c3")`, which includes the `re.match_count
   "name": "re.findall",
   "kind": "INTERNAL",
   "attributes": {
-    "re.function": "findall",
+    "re.operation": "findall",
     "re.pattern": "\\d+",
 +   "re.string_length": 8,
     "re.match_count": 3

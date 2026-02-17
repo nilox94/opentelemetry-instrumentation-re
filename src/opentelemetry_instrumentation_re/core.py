@@ -9,9 +9,9 @@ from opentelemetry.trace import SpanKind
 
 from opentelemetry_instrumentation_re.utils.pattern import get_pattern_string
 from opentelemetry_instrumentation_re.utils.semconv import (
-    RE_FUNCTION,
     RE_LIBRARY_NAME,
     RE_MATCH_COUNT,
+    RE_OPERATION,
     RE_PATTERN,
     RE_STRING_LENGTH,
 )
@@ -93,7 +93,7 @@ def _make_wrapper(
         pattern_str = get_pattern_string(first)
         search_str = _search_string_for_attrs(name, *args)
         attrs: Attributes = {
-            RE_FUNCTION: name,
+            RE_OPERATION: name,
             RE_STRING_LENGTH: len(search_str),
             RE_PATTERN: pattern_str,
         }
