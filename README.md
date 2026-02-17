@@ -84,16 +84,16 @@ Example with `re.findall(r"\d", "a1 b2 c3")`, which includes the `re.match_count
 
 ## Supported Operations
 
-| Operation | Module-level Function | Compiled Pattern Method | Notes |
-|-----------|----------------------|------------------------|-------|
-| `search` | `re.search()` | `pattern.search()` | |
-| `match` | `re.match()` | `pattern.match()` | |
-| `fullmatch` | `re.fullmatch()` | `pattern.fullmatch()` | |
-| `split` | `re.split()` | `pattern.split()` | |
-| `findall` | `re.findall()` | `pattern.findall()` | Includes `re.match_count` |
-| `finditer` | `re.finditer()` | `pattern.finditer()` | |
-| `sub` | `re.sub()` | `pattern.sub()` | |
-| `subn` | `re.subn()` | `pattern.subn()` | Includes `re.match_count` |
+| Operation | Module-level Function | Compiled Pattern Method | Instrumented Libraries | Notes |
+|-----------|----------------------|------------------------|------------------------|-------|
+| `search` | `re.search()` | `pattern.search()` | `re`, `regex`, `google-re2` | |
+| `match` | `re.match()` | `pattern.match()` | `re`, `regex`, `google-re2` | |
+| `fullmatch` | `re.fullmatch()` | `pattern.fullmatch()` | `re`, `regex`, `google-re2` | |
+| `split` | `re.split()` | `pattern.split()` | `re`, `regex`, `google-re2` | |
+| `findall` | `re.findall()` | `pattern.findall()` | `re`, `regex`, `google-re2` | Includes `re.match_count` |
+| `finditer` | `re.finditer()` | `pattern.finditer()` | `re`, `regex`, `google-re2` | |
+| `sub` | `re.sub()` | `pattern.sub()` | `re`, `regex`, `google-re2` | |
+| `subn` | `re.subn()` | `pattern.subn()` | `re`, `regex`, `google-re2` | Includes `re.match_count` |
 
 ## Development
 
