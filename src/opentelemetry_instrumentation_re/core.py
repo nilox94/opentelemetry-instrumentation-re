@@ -58,13 +58,12 @@ def _instrument_call(
     call_original: Callable[[], _R],
     result_attributes: Callable[[_R], Attributes] | None = None,
     *,
-    library_name: str | None = None,
+    library_name: str,
 ) -> _R:
-    with tracer.start_as_current_span(f"re.{name}", kind=SpanKind.INTERNAL) as span:
+    with tracer.start_as_current_span(f"{library_name}.{name}", kind=SpanKind.INTERNAL) as span:
         if span.is_recording():
             span.set_attributes(attributes)
-            if library_name is not None:
-                span.set_attribute(RE_LIBRARY_NAME, library_name)
+            span.set_attribute(RE_LIBRARY_NAME, library_name)
         result: _R = call_original()
         if result_attributes is not None and span.is_recording():
             span.set_attributes(result_attributes(result))
@@ -86,7 +85,7 @@ def _make_wrapper(
     original: Callable[..., _R],
     *,
     get_count: Callable[[_R], int] | None = None,
-    library_name: str | None = None,
+    library_name: str,
 ) -> Callable[..., _R]:
     @wraps(original)
     def wrapper(first: Any, *args: Any, **kwargs: Any) -> _R:
@@ -121,7 +120,7 @@ class _PatternWrapper:
         tracer: Tracer,
         pattern_type: type,
         *,
-        library_name: str | None = None,
+        library_name: str,
     ) -> None:
         self._pattern: Any = pattern
         self._wrapped_methods: dict[str, Callable[..., Any]] = {}
@@ -151,7 +150,7 @@ def _make_compile_wrapper(
     original_compile: Callable[..., Any],
     pattern_type: type,
     *,
-    library_name: str | None = None,
+    library_name: str,
 ) -> Callable[..., _PatternWrapper]:
     @wraps(original_compile)
     def wrapper(*args: Any, **kwargs: Any) -> _PatternWrapper:
@@ -166,7 +165,7 @@ def instrument_module(
     tracer: Tracer,
     get_pattern_type: Callable[[], type],
     *,
-    library_name: str | None = None,
+    library_name: str,
 ) -> None:
     """Patch a re-like module with instrumented functions and compile."""
     pattern_type = get_pattern_type()

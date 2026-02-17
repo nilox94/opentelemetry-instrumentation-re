@@ -44,6 +44,7 @@ ReInstrumentor().uninstrument()
 
 ## Span Attributes
 
+Spans are named `{library}.{operation}` (e.g. `re.search`, `regex.findall`, `google_re2.sub`).
 The following attributes are added to spans:
 
 - `re.operation` - operation name (e.g. `search`, `match`, `sub`, `findall`).
