@@ -15,6 +15,8 @@ pip install opentelemetry-instrumentation-re[regex]             # regex package
 pip install opentelemetry-instrumentation-re[google-re2]        # google-re2 package
 ```
 
+**Compatibility:** stdlib `re` works out of the box. To instrument `regex`, install version **`>= 2021.0`**; for `google-re2`, install version **`>= 1.0`**. All recent versions are supported.
+
 ## Usage
 
 ### Manual instrumentation

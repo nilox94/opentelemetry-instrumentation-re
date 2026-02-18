@@ -1,5 +1,9 @@
 # CI: lint, typecheck, and tests on PRs and push to main.
 # Test results are posted to the workflow summary via pytest-results-action.
+#
+# Matrix: python-version × uv-resolution (highest / lowest-direct).
+# lowest-direct proves compatibility with oldest allowed regex/google-re2;
+# highest proves compatibility with latest releases (see FastAPI test.yml).
 
 name: CI
 
@@ -10,12 +14,36 @@ on:
     branches: [main]
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - .github/workflows/ci.yml
+              - src/**
+              - tests/**
+              - pyproject.toml
+              - uv.lock
+
   ci:
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        uv-resolution: [highest, lowest-direct]
+    env:
+      UV_RESOLUTION: ${{ matrix.uv-resolution }}
 
     steps:
       - name: Checkout
@@ -28,7 +56,13 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --extra dev --extra test
+        run: uv sync --extra dev --extra test --extra all
+
+      - name: Log resolved instrumented library versions
+        run: |
+          echo "UV_RESOLUTION=$UV_RESOLUTION"
+          uv pip show regex 2>/dev/null | grep -E "^Version:" || true
+          uv pip show google-re2 2>/dev/null | grep -E "^Version:" || true
 
       - name: Ruff (lint)
         run: uv run ruff check .
