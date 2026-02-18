@@ -48,7 +48,7 @@ class GoogleRe2Instrumentor(BaseInstrumentor):
 
     @override
     def instrumentation_dependencies(self) -> Collection[str]:
-        return ("google-re2",)
+        return ("google-re2 >= 1.0",)
 
     @override
     def _instrument(self, **kwargs: Any) -> None:

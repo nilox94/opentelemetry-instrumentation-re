@@ -48,7 +48,7 @@ class RegexInstrumentor(BaseInstrumentor):
 
     @override
     def instrumentation_dependencies(self) -> Collection[str]:
-        return ("regex",)
+        return ("regex >= 2021.0",)
 
     @override
     def _instrument(self, **kwargs: Any) -> None:

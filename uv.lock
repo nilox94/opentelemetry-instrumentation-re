@@ -199,6 +199,10 @@ dev = [
 google-re2 = [
     { name = "google-re2" },
 ]
+instruments = [
+    { name = "google-re2" },
+    { name = "regex" },
+]
 regex = [
     { name = "regex" },
 ]
@@ -212,19 +216,20 @@ test = [
 requires-dist = [
     { name = "basedpyright", marker = "extra == 'dev'", specifier = ">=1.38.0" },
     { name = "google-re2", marker = "extra == 'google-re2'", specifier = ">=1.0" },
+    { name = "google-re2", marker = "extra == 'instruments'", specifier = ">=1.0" },
     { name = "opentelemetry-api", specifier = "~=1.28" },
     { name = "opentelemetry-instrumentation", specifier = "~=0.49" },
-    { name = "opentelemetry-instrumentation-re", extras = ["google-re2"], marker = "extra == 'all'" },
-    { name = "opentelemetry-instrumentation-re", extras = ["regex"], marker = "extra == 'all'" },
+    { name = "opentelemetry-instrumentation-re", extras = ["instruments"], marker = "extra == 'all'" },
     { name = "opentelemetry-sdk", marker = "extra == 'test'", specifier = ">=1.28.0" },
     { name = "opentelemetry-test-utils", marker = "extra == 'test'", specifier = ">=0.49.0" },
     { name = "prek", marker = "extra == 'dev'", specifier = ">=0.3.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0.0" },
+    { name = "regex", marker = "extra == 'instruments'", specifier = ">=2021.0" },
     { name = "regex", marker = "extra == 'regex'", specifier = ">=2021.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "uv", marker = "extra == 'build'", specifier = ">=0.4" },
 ]
-provides-extras = ["regex", "google-re2", "test", "dev", "all", "build"]
+provides-extras = ["instruments", "regex", "google-re2", "test", "dev", "all", "build"]
 
 [[package]]
 name = "opentelemetry-sdk"
