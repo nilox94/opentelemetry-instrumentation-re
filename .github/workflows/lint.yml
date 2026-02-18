@@ -1,5 +1,6 @@
 # Lint and typecheck on PRs and push to main.
 # Runs when source or tooling config changes (not tests).
+# Validates packaging (lockfile, build) then uses --locked for a reproducible env.
 
 name: Lint
 
@@ -41,8 +42,16 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      # Fail if pyproject.toml was changed without running uv lock
+      - name: Check lockfile
+        run: uv lock --check
+
+      # Ensure package builds (build-backend, metadata, no missing files)
+      - name: Build package
+        run: uv build
+
       - name: Install dependencies
-        run: uv sync --extra dev --extra test
+        run: uv sync --locked --extra dev --extra test
 
       - name: Ruff (lint)
         run: uv run ruff check .
