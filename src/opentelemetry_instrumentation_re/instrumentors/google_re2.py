@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
+from opentelemetry_instrumentation_re._compat import override
 from opentelemetry_instrumentation_re.core import instrument_module, uninstrument_module
 from opentelemetry_instrumentation_re.utils.tracer import create_tracer
 
@@ -48,7 +49,7 @@ class GoogleRe2Instrumentor(BaseInstrumentor):
 
     @override
     def instrumentation_dependencies(self) -> Collection[str]:
-        return ("google-re2",)
+        return ("google-re2 >= 1.0",)
 
     @override
     def _instrument(self, **kwargs: Any) -> None:

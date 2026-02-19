@@ -1,0 +1,16 @@
+# Python Semantic Release configuration.
+# See https://python-semantic-release.readthedocs.io/en/stable/configuration/
+
+[semantic_release]
+branch = "main"
+tag_format = "v{version}"
+version_variables = [
+    "pyproject.toml:project.version",
+    "src/opentelemetry_instrumentation_re/version.py:__version__",
+]
+
+[semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+
+[semantic_release.publish]
+upload_to_vcs_release = false

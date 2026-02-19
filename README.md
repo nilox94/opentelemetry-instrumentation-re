@@ -1,5 +1,7 @@
 # OpenTelemetry instrumentation for Python regex libraries
 
+[![Test](https://github.com/nilox94/opentelemetry-instrumentation-re/actions/workflows/test.yml/badge.svg)](https://github.com/nilox94/opentelemetry-instrumentation-re/actions/workflows/test.yml)
+
 This library provides [OpenTelemetry instrumentation](https://opentelemetry.io/docs/concepts/instrumentation/) for three Python regex libraries: the standard library [`re`](https://docs.python.org/3/library/re.html), and the [`regex`](https://pypi.org/project/regex/) and [`google-re2`](https://pypi.org/project/google-re2/) packages.
 It emits spans for all regex operations (see [Supported Operations](#supported-operations)) and for compiled pattern methods.
 
@@ -12,6 +14,8 @@ pip install opentelemetry-instrumentation-re                    # stdlib re (alw
 pip install opentelemetry-instrumentation-re[regex]             # regex package
 pip install opentelemetry-instrumentation-re[google-re2]        # google-re2 package
 ```
+
+**Compatibility:** stdlib `re` works out of the box. To instrument `regex`, install version **`>= 2021.0`**; for `google-re2`, install version **`>= 1.0`**. All recent versions are supported.
 
 ## Usage
 
@@ -56,7 +60,10 @@ You can instrument more than one of these in the same process if your applicatio
 
 ### Auto-instrumentation
 
-If you already run your app with [OpenTelemetry Python auto-instrumentation](https://opentelemetry.io/docs/languages/python/automatic/), you don’t need to change any code: install this package (and the `[regex]` and/or `[google-re2]` extras for the libraries you use). The agent discovers and enables the instrumentors automatically. To disable them, use `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=re,regex,google_re2` as needed. For setup of the agent itself, see the linked doc.
+If you already run your app with [OpenTelemetry Python auto-instrumentation](https://opentelemetry.io/docs/languages/python/automatic/), you don't need to change any code: install this package (and the `[regex]` and/or `[google-re2]` extras for the libraries you use).
+The agent discovers and enables the instrumentors automatically.
+To disable them, use `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=re,regex,google_re2` as needed.
+For setup of the agent itself, see the linked doc.
 
 ### Uninstrumenting
 
@@ -133,13 +140,11 @@ Example with `re.findall(r"\d", "a1 b2 c3")`, which includes the `re.match_count
 - [Python instrumentation](https://opentelemetry.io/docs/languages/python/instrumentation/) - manual instrumentation and TracerProvider setup.
 - [Python getting started](https://opentelemetry.io/docs/languages/python/getting-started/) - end-to-end setup with an exporter.
 
-## Development
+## Development & Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, running tests, linting, and **Git hooks (prek)**.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow.
+Contributions are welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, running tests, linting, **Git hooks (prek)**, and development workflow.
+Maintainers: see [RELEASING.md](RELEASING.md) for how to publish releases.
 
 ## License
 

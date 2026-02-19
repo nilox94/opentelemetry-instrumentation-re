@@ -1,6 +1,7 @@
 {
   "include": ["src"],
   "exclude": ["**/__pycache__"],
+  "failOnWarnings": false,
   "reportMissingTypeStubs": "warning",
   "reportAny": "none",
   "reportExplicitAny": "none",

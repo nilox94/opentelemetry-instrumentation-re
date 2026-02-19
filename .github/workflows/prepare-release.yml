@@ -1,0 +1,55 @@
+# On push to main: compute version from conventional commits, create tag and
+# draft GitHub release with generated notes. Does NOT publish to PyPI.
+# Publish the draft in the GitHub UI when ready; that triggers publish.yml.
+
+name: Prepare release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-prepare-${{ github.ref_name }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Force release branch to workflow SHA
+        run: git reset --hard ${{ github.sha }}
+
+      - name: Semantic version (no VCS release)
+        id: release
+        uses: python-semantic-release/python-semantic-release@v10.5.3
+        with:
+          config_file: "releaserc.toml"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          git_committer_name: "github-actions"
+          git_committer_email: "actions@users.noreply.github.com"
+          vcs_release: "false"
+          build: "false"
+
+      - name: Write release notes to file
+        if: steps.release.outputs.released == 'true'
+        run: |
+          printf '%s\n' "$RELEASE_NOTES" > release_notes.md
+        env:
+          RELEASE_NOTES: ${{ steps.release.outputs.release_notes }}
+
+      - name: Create draft GitHub release
+        if: steps.release.outputs.released == 'true'
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.release.outputs.tag }}
+          bodyFile: release_notes.md
+          draft: true
+          name: ${{ steps.release.outputs.tag }}

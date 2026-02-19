@@ -1,0 +1,86 @@
+# Tests on PRs and push to main.
+# Matrix: python-version × uv-resolution (highest / lowest-direct).
+# Runs when source, tests, or dependency config changes.
+# We intentionally do not use uv sync --locked so the resolution matrix
+# exercises oldest (lowest-direct) and newest (highest) allowed deps.
+
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            run:
+              - .github/workflows/test.yml
+              - src/**
+              - tests/**
+              - pyproject.toml
+              - uv.lock
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        uv-resolution: [highest, lowest-direct]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+      UV_RESOLUTION: ${{ matrix.uv-resolution }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      # Omit --extra all for lowest-direct to avoid building google-re2 1.0 (no wheels on some platforms)
+      - name: Install dependencies
+        run: |
+          if [ "${{ matrix.uv-resolution }}" = "lowest-direct" ]; then
+            uv sync --extra dev --extra test
+          else
+            uv sync --extra dev --extra test --extra all
+          fi
+
+      - name: Log resolved instrumented library versions
+        run: |
+          echo "UV_RESOLUTION=$UV_RESOLUTION"
+          uv pip show regex 2>/dev/null | grep -E "^Version:" || true
+          uv pip show google-re2 2>/dev/null | grep -E "^Version:" || true
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --junit-xml=test-results.xml
+
+      - name: Surface failing tests
+        if: always()
+        uses: pmeier/pytest-results-action@v0.7.2
+        with:
+          path: test-results.xml
+          summary: true
+          title: Test results
+          fail-on-empty: false
