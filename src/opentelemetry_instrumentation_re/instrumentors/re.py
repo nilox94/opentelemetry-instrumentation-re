@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
+from opentelemetry_instrumentation_re._compat import override
 from opentelemetry_instrumentation_re.core import instrument_module, uninstrument_module
 from opentelemetry_instrumentation_re.utils.tracer import create_tracer
 
