@@ -58,8 +58,14 @@ jobs:
             pyproject.toml
             uv.lock
 
+      # Omit --extra all for lowest-direct to avoid building google-re2 1.0 (no wheels on some platforms)
       - name: Install dependencies
-        run: uv sync --extra dev --extra test --extra all
+        run: |
+          if [ "${{ matrix.uv-resolution }}" = "lowest-direct" ]; then
+            uv sync --extra dev --extra test
+          else
+            uv sync --extra dev --extra test --extra all
+          fi
 
       - name: Log resolved instrumented library versions
         run: |
