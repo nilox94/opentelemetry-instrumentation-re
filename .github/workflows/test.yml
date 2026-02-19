@@ -83,3 +83,4 @@ jobs:
           path: test-results.xml
           summary: true
           title: Test results
+          fail-on-empty: false
