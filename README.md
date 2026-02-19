@@ -140,14 +140,11 @@ Example with `re.findall(r"\d", "a1 b2 c3")`, which includes the `re.match_count
 - [Python instrumentation](https://opentelemetry.io/docs/languages/python/instrumentation/) - manual instrumentation and TracerProvider setup.
 - [Python getting started](https://opentelemetry.io/docs/languages/python/getting-started/) - end-to-end setup with an exporter.
 
-## Development
+## Development & Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, running tests, linting, and **Git hooks (prek)**.
+Contributions are welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, running tests, linting, **Git hooks (prek)**, and development workflow.
 Maintainers: see [RELEASING.md](RELEASING.md) for how to publish releases.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow.
 
 ## License
 
