@@ -60,7 +60,10 @@ You can instrument more than one of these in the same process if your applicatio
 
 ### Auto-instrumentation
 
-If you already run your app with [OpenTelemetry Python auto-instrumentation](https://opentelemetry.io/docs/languages/python/automatic/), you don’t need to change any code: install this package (and the `[regex]` and/or `[google-re2]` extras for the libraries you use). The agent discovers and enables the instrumentors automatically. To disable them, use `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=re,regex,google_re2` as needed. For setup of the agent itself, see the linked doc.
+If you already run your app with [OpenTelemetry Python auto-instrumentation](https://opentelemetry.io/docs/languages/python/automatic/), you don't need to change any code: install this package (and the `[regex]` and/or `[google-re2]` extras for the libraries you use).
+The agent discovers and enables the instrumentors automatically.
+To disable them, use `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=re,regex,google_re2` as needed.
+For setup of the agent itself, see the linked doc.
 
 ### Uninstrumenting
 
@@ -140,6 +143,7 @@ Example with `re.findall(r"\d", "a1 b2 c3")`, which includes the `re.match_count
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, running tests, linting, and **Git hooks (prek)**.
+Maintainers: see [RELEASING.md](RELEASING.md) for how to publish releases.
 
 ## Contributing
 

@@ -3,6 +3,7 @@
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 We use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages; the format is used by our release process to determine version bumps.
+See [RELEASING.md](RELEASING.md) for how releases and publishing work.
 
 ## Development Setup
 
@@ -16,7 +17,7 @@ uv sync --all-extras
 
 ## Git Hooks (prek)
 
-[prek](https://prek.j178.dev/) runs checks before each commit (Ruff and basic file checks). It’s included as a dev dependency, so after `uv sync --extra dev` you can run:
+[prek](https://prek.j178.dev/) runs checks before each commit (Ruff and basic file checks). It's included as a dev dependency, so after `uv sync --extra dev` you can run:
 
 ```bash
 # Install git hooks and prepare hook environments (one-time per clone)
