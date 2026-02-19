@@ -228,7 +228,7 @@ requires-dist = [
     { name = "regex", marker = "extra == 'instruments'", specifier = ">=2021.0" },
     { name = "regex", marker = "extra == 'regex'", specifier = ">=2021.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-    { name = "typing-extensions", marker = "python_full_version < '3.12'", specifier = ">=4.0" },
+    { name = "typing-extensions", marker = "python_full_version < '3.12'", specifier = ">=4.5" },
     { name = "uv", marker = "extra == 'build'", specifier = ">=0.4" },
 ]
 provides-extras = ["instruments", "regex", "google-re2", "test", "dev", "all", "build"]
