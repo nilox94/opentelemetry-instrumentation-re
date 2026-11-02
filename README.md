@@ -99,7 +99,7 @@ Every call to an instrumented function or pattern method pays for the wrapper, w
 | Every call | The wrapper: two clock reads, an instrumentation check, and the proxy or patched function. |
 | `compile()` | The patched function and a lookup of the pattern's proxy. `compile()` records nothing. A pattern without a live proxy gets a new one, inserted under a process-wide lock. That happens on the first compile, and every time if the caller drops the pattern after use, as in `re.compile(p).search(s)`. |
 | google-re2 module functions | `re2.search(...)` and the other module functions call `compile()` on every call, and google-re2 patterns cannot be weakly referenced, so each call builds a new proxy. Compile the pattern once and call its methods. |
-| `finditer`, or `sub` / `subn` with a callable replacement | A clock pair per match, so the cost grows with the number of matches. This keeps your loop body and replacement function out of the regex duration. For a simple pattern this costs more per match than the engine's own matching, so a call with many matches can take several times as long as without instrumentation. |
+| `finditer`, or `sub` / `subn` with a callable replacement | A clock pair per match, so the cost grows with the number of matches. This keeps your loop body and replacement function out of the regex duration. For a simple pattern this costs more per match than the engine's own matching, so a call with many matches can take more than twice as long as without instrumentation. |
 | Duration at or above `histogram_floor_ms` | `Histogram.record`. The OpenTelemetry SDK takes a lock on each record, which limits multi-threaded throughput when every call records. |
 | Duration at or above `span_threshold_ms` | A span, plus what your span processor does with it. |
 | The call raises | One counter increment. |
@@ -107,6 +107,18 @@ Every call to an instrumented function or pattern method pays for the wrapper, w
 Measured figures are in [BENCHMARKS.md](https://github.com/nilox94/opentelemetry-instrumentation-re/blob/main/BENCHMARKS.md): a fast call at the default settings, the same call with `histogram_floor_ms=0`, the cost per match next to the engine's, `compile()` with and without a live proxy, a google-re2 module call, and a span on every call. They come from one GitHub-hosted Ubuntu run on Python 3.12. Another machine can differ by about 2×, so run `uv run python benchmarks/bench.py` on your deployment hardware.
 
 <!-- cost-snapshot -->
+From the published run (commit `f47f7f7`), with an SDK meter provider and the default settings:
+
+| Call | Without instrumentation | Instrumented |
+|---|---|---|
+| Compiled `search` on 9 bytes | 0.13 µs | 1.21 µs |
+| `finditer`, 1,000 matches, consumed | 157 µs | 370 µs |
+| `sub` with a callable, 1,000 matches | 103 µs | 284 µs |
+| `re.compile`, caller keeps the pattern | 0.14 µs | 0.79 µs |
+| `re.compile`, caller drops the pattern | 0.13 µs | 2.42 µs |
+| google-re2 module-level `search` on 9 bytes | 5.96 µs | 11.62 µs |
+
+With `histogram_floor_ms=0`, the 9-byte search takes 3.96 µs. With `span_threshold_ms=0` and a batch span processor, it takes 16.54 µs. One thread ran 8.1 million short searches per second without instrumentation and 0.85 million with it.
 
 To estimate CPU, multiply the added microseconds by the number of instrumented calls per second. One microsecond at 100,000 calls per second is a tenth of a CPU core. `ReInstrumentor` sees every stdlib `re` call in the process, including calls from libraries and from OpenTelemetry itself. To measure your call rate, run briefly with `histogram_floor_ms=0` and read the histogram count.
 

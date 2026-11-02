@@ -5,13 +5,33 @@
 The published figures are one run of the Benchmark workflow on `ubuntu-24.04`, CPython 3.12. Before a pull request that changes the hot path is merged, add the `benchmark` label to it. Paste that job's `## Snapshot` block below, including the `python`, `cpu`, and `commit` lines, and push it to the same pull request. The run on the release tag repeats the measurement as a check. Do not paste a laptop run. Another machine can differ by about 2×.
 
 <!-- snapshot -->
-No snapshot yet.
+python 3.12.3 x86_64 Linux  opentelemetry-sdk 1.39.1
+
+cpu: AMD EPYC 9V45 96-Core Processor
+
+commit: f47f7f7
+
+| case | wrapper µs | histogram µs |
+| --- | --- | --- |
+| compiled search, 9 B | +1.05 | +0.02 |
+| compiled search, 2 KB | +0.98 | within spread |
+| compiled search, 9 B, floor 0 | +2.00 | +1.82 |
+| module finditer, consume | +5.51 | -0.15 |
+| module finditer, 1,000 matches | +214.08 | within spread |
+| module compile, cache hit | +0.65 | within spread |
+| module compile, new proxy | +2.32 | within spread |
+| re2 module search, 9 B | +5.73 | within spread |
+| span every call, batch processor | +15.75 | within spread |
+
+per match: finditer wrapper 0.210 µs, engine 0.157 µs; callable repl wrapper 0.180 µs, engine 0.103 µs
+
+throughput, 1 thread, short-string compiled search, default floor, calls/s: raw 8,123,594 [7,969,086–8,133,610]  sdk 854,062 [850,249–863,994]
 
 How to read the snapshot:
 
 - `compiled search, 9 B` is the cost of a fast call at the default settings. Nothing is recorded, so this is the wrapper alone.
 - `compiled search, 9 B, floor 0` is the same call with `histogram_floor_ms=0`, which records the histogram on every call.
-- `per match` is the wrapper's extra cost for each match of `finditer` and of `sub` with a callable replacement, next to the engine's own cost per match on the same rows. When the wrapper's figure is the larger one, a call with many matches takes several times as long as without instrumentation.
+- `per match` is the wrapper's extra cost for each match of `finditer` and of `sub` with a callable replacement, next to the engine's own cost per match on the same rows. When the wrapper's figure is the larger one, a call with many matches takes more than twice as long as without instrumentation.
 - `module compile, cache hit` is `re.compile` while the caller keeps the pattern, so the existing proxy is returned. `module compile, new proxy` is the same call when the caller drops the pattern each time, as in `re.compile(p).search(s)`, so a proxy is built on every call.
 - `re2 module search, 9 B` is a module-level google-re2 call. google-re2 compiles inside every module function, and its patterns cannot be weakly referenced, so every call builds a proxy.
 - `span every call, batch processor` is the cost of `span_threshold_ms=0`.
