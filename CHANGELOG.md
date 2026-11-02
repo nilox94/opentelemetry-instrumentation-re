@@ -10,9 +10,6 @@
   ([#4](https://github.com/nilox94/opentelemetry-instrumentation-re/pull/4),
   [`fa6de94`](https://github.com/nilox94/opentelemetry-instrumentation-re/commit/fa6de94b13aed67b55f00e411ff66f8723a26c35))
 
-
-## Unreleased
-
 ### Changed
 
 - **Breaking vs the published 0.1.0 wheel:** a call no longer emits a span every time, and pattern text is no longer recorded unless `capture_pattern` is enabled.
@@ -55,9 +52,7 @@
 - google-re2 `finditer` iterators finish telemetry on `throw()`, and when `close()` raises. A `throw()` the generator swallows does not end the span. `throw()` forwards only the arguments it was given, so it no longer triggers Python 3.12's warning about the three-argument form.
 - Suppress instrumentation during span and metric export to avoid feedback loops with the OTel SDK (stdlib `re` inside exporters/propagators).
 - CI: Test redistribute installs the built wheel with the `regex` and `google-re2` extras. It used the removed `instruments` extra, so those engines' tests were skipped. The lowest-direct Test cells on Python 3.12 to 3.14 run again, with every extra except `google-re2`, whose lowest version does not build there.
-- Versioning: `pyproject.toml` and `version.py` stay at the last tag, `1.0.1`. The Prepare release workflow computes the next version from conventional commits (a `feat` commit gives `1.1.0`).
-
-Note: git tags `v1.0.0` and `v1.0.1` were never published to PyPI; the only published wheel is `0.1.0`. For PyPI users the next release is a new major version, which is why it can include the breaking changes above.
+Note: git tags `v1.0.0` and `v1.0.1` were never published to PyPI; the only earlier wheel there is `0.1.0`. For PyPI users this release is a new major version, which is why it includes the breaking changes above.
 
 ## v1.0.1 (2026-02-19)
 
