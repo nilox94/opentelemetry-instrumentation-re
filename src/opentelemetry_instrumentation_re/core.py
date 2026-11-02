@@ -124,8 +124,8 @@ class _ProxyCache:
 
     def get_or_create(self, compiled: Any, factory: Callable[[Any], Any]) -> Any:
         """Return the proxy for ``compiled``. Concurrent misses keep the first one stored."""
-        with self._lock:
-            existing = self._get(compiled)
+        # Lookups are single dict operations, atomic under the GIL; only inserts lock.
+        existing = self._get(compiled)
         if existing is not None:
             return existing
         # Outside the lock: the factory runs Python code, and anything it calls
