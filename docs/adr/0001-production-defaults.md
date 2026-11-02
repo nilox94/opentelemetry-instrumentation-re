@@ -1,7 +1,7 @@
 # ADR 0001: Production defaults
 
 Status: accepted
-Date: 2026-10-21, revised 2026-10-25
+Date: 2026-10-21, revised 2026-11-02
 
 ## Span on error
 
@@ -78,21 +78,35 @@ Why:
 
 ## finditer finalizer
 
-- `weakref.finalize` for an abandoned iterator sets `atexit = False`.
-- A collection while the process is running still records. Interpreter shutdown does not.
-- A collection while this thread is already recording telemetry drops the point.
+- The `weakref.finalize` callback for an abandoned iterator only appends its finish to a process-wide `deque(maxlen=1024)`. No lock, no logging, no telemetry. When the deque is full, the oldest entry is dropped.
+- The queue is drained by an instrumented call that is about to record (`_record_fast` after the quiet check) or that takes the general path (`_execute`: `finditer`, a callable `sub` / `subn`, a module function given a compiled pattern). Never while this thread is recording.
+- `atexit = False`. Nothing is drained at shutdown.
+- `compile()` builds a proxy outside the proxy-cache lock and takes the lock only to insert it. Lookups take no lock.
 
 Why:
 
+- The garbage collector runs finalizers at arbitrary points, including while this package, the SDK, or the application holds a non-reentrant lock. Recording runs span processors, meters, and log handlers, which can take those locks or call `re` again.
+- Confirmed deadlock: a GC pass inside proxy creation, under the proxy-cache lock, recorded an abandoned iterator. A span processor's `on_end` called `re.compile`, and the thread blocked on the lock it held. The older check (drop the point while this thread records) only covered `Histogram.record`.
+- The quiet fast path does not drain, so its cost does not change. The price is that an abandoned iterator's point can arrive late, or never if no recording call follows, and is lost beyond 1,024 pending.
 - Shutdown runs atexit finalizers after the meter provider can already be shut down.
-- The garbage collector can run the finalizer inside `Histogram.record`, while the SDK holds a non-reentrant lock. Recording there could deadlock.
+
+## finditer iterator methods
+
+- The wrapper has `close()` and `throw()` only when the engine's iterator has them: google-re2's generator. Not for `re` (`callable_iterator`) or `regex` (`Scanner`).
+- `throw()` forwards the caller's arguments unchanged. If it raises, the iteration is finished without an error.
+
+Why:
+
+- Methods that exist only while instrumented make code that works in production fail with instrumentation off. Same principle as the google-re2 keywords decision.
+- An exception the caller injects is not engine time and not an engine error.
+- The three-argument `throw()` form warns from Python 3.12, so the wrapper does not add arguments.
 
 ## Published cost
 
 - Quote added microseconds: `wrapper` and `histogram`. The README gives the arithmetic from microseconds to CPU share, because the ratio against a short match is what users pay.
 - The published number is one Benchmark workflow run: `ubuntu-24.04`, CPython 3.12. It runs when a pull request gets the `benchmark` label, and on tags `v*`. The pull-request run is pasted before merge so the release's README and `BENCHMARKS.md` agree. The tag run is a check. Not a Python-version matrix.
 - Do not paste a laptop run into `BENCHMARKS.md`. Another machine can differ by about 2×.
-- The quoted rows are compiled search at two sizes (the addend should not move), compiled search with `histogram_floor_ms=0`, `finditer` with 5 and 1,000 matches, the cost per match, and a span on every call with a batch processor.
+- The quoted rows are compiled search at two sizes (the addend should not move), compiled search with `histogram_floor_ms=0`, `finditer` with 5 and 1,000 matches, `compile()` with the pattern kept (`module compile, cache hit`) and dropped (`module compile, new proxy`), a google-re2 module call (`re2 module search, 9 B`), a span on every call with a batch processor, and the cost per match for the wrapper next to the engine's.
 
 Why:
 

@@ -11,7 +11,9 @@ How to read the snapshot:
 
 - `compiled search, 9 B` is the cost of a fast call at the default settings. Nothing is recorded, so this is the wrapper alone.
 - `compiled search, 9 B, floor 0` is the same call with `histogram_floor_ms=0`, which records the histogram on every call.
-- `per match` is the extra cost of each match for `finditer` and for `sub` with a callable replacement.
+- `per match` is the wrapper's extra cost for each match of `finditer` and of `sub` with a callable replacement, next to the engine's own cost per match on the same rows. When the wrapper's figure is the larger one, a call with many matches takes several times as long as without instrumentation.
+- `module compile, cache hit` is `re.compile` while the caller keeps the pattern, so the existing proxy is returned. `module compile, new proxy` is the same call when the caller drops the pattern each time, as in `re.compile(p).search(s)`, so a proxy is built on every call.
+- `re2 module search, 9 B` is a module-level google-re2 call. google-re2 compiles inside every module function, and its patterns cannot be weakly referenced, so every call builds a proxy.
 - `span every call, batch processor` is the cost of `span_threshold_ms=0`.
 - `throughput` is calls per second for one thread at the default settings.
 
@@ -56,15 +58,16 @@ At the default `histogram_floor_ms` (100 µs), a fast call records no histogram 
 | `module sub, callable repl, 1,000 matches` | The same on `"a1" * 1000`. |
 | `module finditer, consume` | `list(finditer)` on `1a2b3c4d5e` (5 matches). |
 | `module finditer, 1,000 matches` | `list(finditer)` on `"a1" * 1000`. |
-| `module finditer, first match` | One `next`, then `close()`. `close()` records inside the timed call; a dropped iterator would record later, in whichever sample ran the garbage collector. |
-| `module compile, cache hit` | `re.compile(r"\d+")` with a warm cache. `compile()` records nothing; `wrapper` is the proxy and the patched function. |
+| `module finditer, first match` | One `next`, then the iterator is dropped. `re` iterators have no `close()`. Its telemetry is queued and recorded by the next sample's `finditer`, so each sample includes the previous sample's deferred record. Real code that abandons iterators takes the same path. |
+| `module compile, cache hit` | `re.compile(r"\d+")` with a warm cache, while the caller holds the pattern. `compile()` records nothing; `wrapper` is the patched function and the proxy lookup. |
+| `module compile, new proxy` | The same call when no one keeps the pattern, so each call builds a proxy and inserts it under a lock. |
 
 The bullets under the table:
 
 - `9 B` and `wrapper` repeat the fast-call wrapper at two string sizes.
 - `histogram at default floor` should be `within spread` everywhere.
 - `floor 0, 9 B` is the wrapper and the histogram when every call records. The wrapper is higher than at the default floor because the recording path runs.
-- `per match` is `(wrapper on 1,000 matches − wrapper on the short row) / (1,000 − short matches)`, for `finditer` and for callable `sub`.
+- `per match` is `(wrapper on 1,000 matches − wrapper on the short row) / (1,000 − short matches)`, for `finditer` and for callable `sub`. `engine` is the same difference taken on the `raw` column.
 - `keyword − positional` alternates the two calls in one run. `not distinct` means the gap is within its own spread.
 - `no providers` is `instrument()` without a meter provider. `same as 9 B noop` means no global `MeterProvider` is set.
 
@@ -80,7 +83,11 @@ Paired single calls, not 40 ms batches, because the scan itself varies by more t
 
 ## Other engines
 
-`regex` and `re2` each have one row: compiled `search` on the 9-byte string. A module-level `google-re2` call is not measured.
+| Row | Call |
+|---|---|
+| `regex compiled search, 9 B` | `pattern.search` on a compiled `regex` pattern, on the 9-byte string. |
+| `re2 compiled search, 9 B` | The same on a compiled google-re2 pattern. |
+| `re2 module search, 9 B` | `re2.search(r"\d+", text)`. google-re2 compiles inside every module function, and its patterns cannot be weakly referenced, so each call builds a new proxy. `raw` also compiles on every call. |
 
 ## Throughput
 
@@ -123,5 +130,4 @@ The last line subtracts `empty call` from the first three and compares the sum w
 - `capture_pattern`, which is off by default.
 - A failing match, or a span that includes the pattern text.
 - Methods on patterns compiled before `instrument()`, which are not instrumented.
-- A module-level `google-re2` call.
 - More than one core, unless the throughput label is `raw scaled`.
