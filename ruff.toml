@@ -1,6 +1,6 @@
 # Ruff configuration for opentelemetry-instrumentation-re
 
-target-version = "py39"
+target-version = "py310"
 line-length = 100
 
 [lint]
@@ -31,6 +31,7 @@ ignore = [
 [lint.per-file-ignores]
 "tests/*" = ["ARG", "S101"]  # Allow assert in tests, unused args
 "src/**/__init__.py" = ["TCH001", "TCH002"]  # Allow type-only imports when using from __future__ import annotations
+"src/opentelemetry_instrumentation_re/core.py" = ["UP035", "TC003"]  # Callable used at runtime in wrappers
 
 [lint.isort]
 known-first-party = ["opentelemetry_instrumentation_re"]

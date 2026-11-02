@@ -4,8 +4,10 @@
 [semantic_release]
 branch = "main"
 tag_format = "v{version}"
-version_variables = [
+version_toml = [
     "pyproject.toml:project.version",
+]
+version_variables = [
     "src/opentelemetry_instrumentation_re/version.py:__version__",
 ]
 

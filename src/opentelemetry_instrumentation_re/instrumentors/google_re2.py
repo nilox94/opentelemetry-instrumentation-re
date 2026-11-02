@@ -2,49 +2,34 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
 from opentelemetry_instrumentation_re._compat import override
+from opentelemetry_instrumentation_re.config import InstrumentationConfig
 from opentelemetry_instrumentation_re.core import instrument_module, uninstrument_module
+from opentelemetry_instrumentation_re.utils.meter import (
+    create_duration_histogram,
+    create_error_counter,
+    create_meter,
+)
 from opentelemetry_instrumentation_re.utils.tracer import create_tracer
 
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    from opentelemetry.trace import Tracer
-
-logger = logging.getLogger(__name__)
-
-
-def _instrument_google_re2(tracer: Tracer) -> None:
-    try:
-        import re2
-    except ImportError as e:
-        logger.debug("Skipping google-re2 instrumentation: module not installed (%s)", e)
-        return
-    try:
-        instrument_module(re2, tracer, lambda: type(re2.compile("")), library_name="google_re2")
-    except Exception as e:
-        logger.warning("Failed to instrument google-re2: %s", e, exc_info=True)
-
-
-def _uninstrument_google_re2() -> None:
-    try:
-        import re2
-    except ImportError as e:
-        logger.debug("Skipping google-re2 uninstrument: module not installed (%s)", e)
-        return
-    uninstrument_module(re2)
-
 
 class GoogleRe2Instrumentor(BaseInstrumentor):
     """Instrumentor for the re2 module from the google-re2 package.
 
-    Only instruments if google-re2 is installed (module name is also re2).
-    Use when your code uses the official Google RE2 Python bindings.
+    Call :meth:`instrument` explicitly (this package does not register auto-instrumentation
+    entry points). Optional kwargs: ``tracer_provider``, ``meter_provider``,
+    ``span_threshold_ms``, ``histogram_floor_ms``, ``capture_pattern``,
+    ``capture_pattern_max_len``.
+
+    google-re2 names the haystack ``text``. ``string=`` raises ``TypeError``, as it does
+    without instrumentation.
     """
 
     @override
@@ -53,8 +38,25 @@ class GoogleRe2Instrumentor(BaseInstrumentor):
 
     @override
     def _instrument(self, **kwargs: Any) -> None:
-        _instrument_google_re2(create_tracer(kwargs.get("tracer_provider")))
+        import re2
+
+        config = InstrumentationConfig.from_kwargs(**kwargs)
+        tracer = create_tracer(kwargs.get("tracer_provider"))
+        meter = create_meter(kwargs.get("meter_provider"))
+        histogram = create_duration_histogram(meter)
+        errors = create_error_counter(meter)
+        instrument_module(
+            re2,
+            tracer,
+            histogram,
+            errors,
+            config,
+            lambda: type(re2.compile("")),
+            library_name="google_re2",
+        )
 
     @override
     def _uninstrument(self, **kwargs: Any) -> None:
-        _uninstrument_google_re2()
+        import re2
+
+        uninstrument_module(re2)

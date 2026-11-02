@@ -2,49 +2,31 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
 from opentelemetry_instrumentation_re._compat import override
+from opentelemetry_instrumentation_re.config import InstrumentationConfig
 from opentelemetry_instrumentation_re.core import instrument_module, uninstrument_module
+from opentelemetry_instrumentation_re.utils.meter import (
+    create_duration_histogram,
+    create_error_counter,
+    create_meter,
+)
 from opentelemetry_instrumentation_re.utils.tracer import create_tracer
 
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    from opentelemetry.trace import Tracer
-
-logger = logging.getLogger(__name__)
-
-
-def _instrument_regex(tracer: Tracer) -> None:
-    try:
-        import regex
-    except ImportError as e:
-        logger.debug("Skipping regex instrumentation: module not installed (%s)", e)
-        return
-    try:
-        instrument_module(regex, tracer, lambda: type(regex.compile("")), library_name="regex")
-    except Exception as e:
-        logger.warning("Failed to instrument regex: %s", e, exc_info=True)
-
-
-def _uninstrument_regex() -> None:
-    try:
-        import regex
-    except ImportError as e:
-        logger.debug("Skipping regex uninstrument: module not installed (%s)", e)
-        return
-    uninstrument_module(regex)
-
 
 class RegexInstrumentor(BaseInstrumentor):
     """Instrumentor for the regex module (PyPI regex).
 
-    Only instruments if the regex module is installed. Use when your code
-    uses ``import regex`` instead of stdlib ``re``.
+    Call :meth:`instrument` explicitly (this package does not register auto-instrumentation
+    entry points). Optional kwargs: ``tracer_provider``, ``meter_provider``,
+    ``span_threshold_ms``, ``histogram_floor_ms``, ``capture_pattern``,
+    ``capture_pattern_max_len``.
     """
 
     @override
@@ -53,8 +35,25 @@ class RegexInstrumentor(BaseInstrumentor):
 
     @override
     def _instrument(self, **kwargs: Any) -> None:
-        _instrument_regex(create_tracer(kwargs.get("tracer_provider")))
+        import regex
+
+        config = InstrumentationConfig.from_kwargs(**kwargs)
+        tracer = create_tracer(kwargs.get("tracer_provider"))
+        meter = create_meter(kwargs.get("meter_provider"))
+        histogram = create_duration_histogram(meter)
+        errors = create_error_counter(meter)
+        instrument_module(
+            regex,
+            tracer,
+            histogram,
+            errors,
+            config,
+            lambda: type(regex.compile("")),
+            library_name="regex",
+        )
 
     @override
     def _uninstrument(self, **kwargs: Any) -> None:
-        _uninstrument_regex()
+        import regex
+
+        uninstrument_module(regex)

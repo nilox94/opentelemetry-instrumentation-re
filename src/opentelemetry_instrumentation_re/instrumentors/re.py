@@ -2,52 +2,54 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
 from opentelemetry_instrumentation_re._compat import override
+from opentelemetry_instrumentation_re.config import InstrumentationConfig
 from opentelemetry_instrumentation_re.core import instrument_module, uninstrument_module
+from opentelemetry_instrumentation_re.utils.meter import (
+    create_duration_histogram,
+    create_error_counter,
+    create_meter,
+)
 from opentelemetry_instrumentation_re.utils.tracer import create_tracer
 
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-logger = logging.getLogger(__name__)
-
 
 class ReInstrumentor(BaseInstrumentor):
-    """Instrumentor for the re (regex) module.
+    """Instrumentor for the stdlib ``re`` module.
 
-    This instrumentor adds OpenTelemetry tracing to Python's standard library
-    `re` module, creating spans for regex operations like search, match,
-    findall, sub, etc.
-
-    Example::
-
-        from opentelemetry_instrumentation_re import ReInstrumentor
-
-        ReInstrumentor().instrument()
-        import re
-        re.search(r"\\d+", "hello 42 world")
-        ReInstrumentor().uninstrument()
-
-    See :class:`opentelemetry.instrumentation.instrumentor.BaseInstrumentor`.
+    Call :meth:`instrument` explicitly (this package does not register auto-instrumentation
+    entry points). Optional kwargs: ``tracer_provider``, ``meter_provider``,
+    ``span_threshold_ms``, ``histogram_floor_ms``, ``capture_pattern``,
+    ``capture_pattern_max_len``.
     """
 
     @override
     def instrumentation_dependencies(self) -> Collection[str]:
-        return ()  # stdlib re has no package dependency
+        return ()
 
     @override
     def _instrument(self, **kwargs: Any) -> None:
+        config = InstrumentationConfig.from_kwargs(**kwargs)
         tracer = create_tracer(kwargs.get("tracer_provider"))
-        try:
-            instrument_module(re, tracer, lambda: re.Pattern, library_name="re")
-        except Exception as e:
-            logger.warning("Failed to instrument re: %s", e, exc_info=True)
+        meter = create_meter(kwargs.get("meter_provider"))
+        histogram = create_duration_histogram(meter)
+        errors = create_error_counter(meter)
+        instrument_module(
+            re,
+            tracer,
+            histogram,
+            errors,
+            config,
+            lambda: re.Pattern,
+            library_name="re",
+        )
 
     @override
     def _uninstrument(self, **kwargs: Any) -> None:

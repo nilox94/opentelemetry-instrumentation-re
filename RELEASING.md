@@ -37,12 +37,12 @@ In more detail:
    - Pushes the version commit and tag to `main`
    - Creates a **draft** GitHub release for that tag with **generated release notes** (from the changelog)
 
-   The trigger is always **push or merge to `main`**; you never edit the version by hand for a release.
+   The workflow runs on every push or merge to `main`. The version is not edited by hand for a release.
 
-   **Nothing is published to PyPI at this stage.** The release exists only as a draft on GitHub.
+   Nothing is published to PyPI at this stage. The release exists only as a draft on GitHub.
 
 2. **Publish (manual trigger)**
-   When you are happy with the draft:
+   When the draft looks right:
    - Open the [Releases](https://github.com/nilox94/opentelemetry-instrumentation-re/releases) page
    - Find the draft, review (and edit if needed) the release notes
    - Click **Publish release**
@@ -52,7 +52,7 @@ In more detail:
    - Runs `uv build` to build the package
    - Runs `uv publish --trusted-publishing` to upload to PyPI
 
-So: **version and release notes are automatic**; **publishing to PyPI happens only when you publish the draft**.
+The version and the release notes are written by the prepare workflow. The package is uploaded to PyPI only when the draft is published.
 
 ## What you do as a maintainer
 
@@ -75,13 +75,11 @@ So: **version and release notes are automatic**; **publishing to PyPI happens on
 
 - Each push to `main` that triggers a version bump creates a **new** tag and a **new** draft release.
 - Older drafts (e.g. for `v0.2.0`) stay as drafts until you publish or delete them.
-- The next run only considers commits **after** the latest tag, so release notes do not “accumulate” into one giant draft; you get one draft per version.
+- The next run only considers commits after the latest tag. Each version gets its own draft. Notes are not merged into an older draft.
 
 ---
 
 ## Summary
-
-Quick reference:
 
 | Step | Who / when |
 |------|-------------|

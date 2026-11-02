@@ -1,29 +1,38 @@
-"""Pattern extraction and protocol for re instrumentation."""
+"""Pattern extraction for re instrumentation."""
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any
 
 
-@runtime_checkable
-class PatternLike(Protocol):
-    """Protocol for compiled pattern objects (re.Pattern, regex.Pattern, google-re2)."""
+def unwrap_pattern(pattern: Any) -> Any:
+    """Return the underlying compiled pattern if ``pattern`` is a proxy."""
+    seen: set[int] = set()
+    current = pattern
+    while True:
+        inner = getattr(current, "__wrapped__", None)
+        if inner is None or id(inner) in seen:
+            return current
+        seen.add(id(current))
+        current = inner
 
-    @property
-    def pattern(self) -> str | bytes: ...
 
-
-def get_pattern_string(pattern: str | bytes | PatternLike) -> str:
-    """Extract pattern string from pattern (str, bytes, or compiled Pattern-like).
-
-    Returns:
-        The pattern as a string. Bytes patterns are decoded using UTF-8.
-    """
-    if isinstance(pattern, PatternLike):
-        unwrapped: str | bytes = pattern.pattern
+def get_pattern_string(pattern: Any, *, decode_bytes: bool = False) -> str:
+    """Extract a pattern string from str, bytes, or a compiled pattern-like object."""
+    if isinstance(pattern, (str, bytes)):
+        raw: str | bytes = pattern
     else:
-        unwrapped = pattern
+        unwrapped = unwrap_pattern(pattern)
+        raw_attr = getattr(unwrapped, "pattern", None)
+        if isinstance(raw_attr, (str, bytes)):
+            raw = raw_attr
+        elif isinstance(unwrapped, (str, bytes)):
+            raw = unwrapped
+        else:
+            raise TypeError(f"unsupported pattern type: {type(pattern)!r}")
 
-    if isinstance(unwrapped, bytes):
-        return unwrapped.decode("utf-8", errors="replace")
-    return unwrapped
+    if isinstance(raw, bytes):
+        if decode_bytes:
+            return raw.decode("utf-8", errors="replace")
+        return raw.decode("latin-1")
+    return raw

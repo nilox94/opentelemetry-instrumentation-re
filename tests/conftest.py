@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 import pytest
 from opentelemetry import trace as trace_api
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.test.globals_test import reset_trace_globals
 from opentelemetry.test.test_base import TestBase
@@ -22,18 +24,16 @@ from opentelemetry_instrumentation_re import (
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-# Backends: (module, instrumentor_class, library_name for spans)
 BACKEND_NAMES = ("re", "regex", "google_re2")
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Parametrize any test that uses `backend` or `instrumented_backend` over `BACKEND_NAMES` fixtures."""
     if "backend" in metafunc.fixturenames or "instrumented_backend" in metafunc.fixturenames:
         metafunc.parametrize("backend", BACKEND_NAMES, indirect=True)
 
 
 Backend: TypeAlias = tuple[Any, type[BaseInstrumentor], str]
-InstrumentedBackend: TypeAlias = tuple[Any, str, InMemorySpanExporter]
+InstrumentedBackend: TypeAlias = tuple[Any, str, InMemorySpanExporter, InMemoryMetricReader]
 
 
 def _backend_re() -> Backend:
@@ -67,7 +67,6 @@ _BACKEND_LOADERS = {
 
 @pytest.fixture
 def backend(request: pytest.FixtureRequest) -> Backend:
-    """Parametrized backend: (module, instrumentor_class, library_name). Use with indirect=True."""
     name: str = request.param
     loader = _BACKEND_LOADERS[name]
     return loader()
@@ -77,15 +76,21 @@ def backend(request: pytest.FixtureRequest) -> Backend:
 def instrumented_backend(
     backend: Backend,
 ) -> Generator[InstrumentedBackend, Any, Any]:
-    """Setup tracer provider + instrument the backend; yield (module, library_name, memory_exporter); teardown."""
     module, instrumentor_class, library_name = backend
     tracer_provider, memory_exporter = TestBase.create_tracer_provider()
+    metric_reader = InMemoryMetricReader()
+    meter_provider = MeterProvider(metric_readers=[metric_reader])
     reset_trace_globals()
     trace_api.set_tracer_provider(tracer_provider)
     memory_exporter.clear()
-    instrumentor_class().instrument(tracer_provider=tracer_provider)
+    instrumentor_class().instrument(
+        tracer_provider=tracer_provider,
+        meter_provider=meter_provider,
+        span_threshold_ms=0,
+        histogram_floor_ms=0,
+    )
     try:
-        yield (module, library_name, memory_exporter)
+        yield (module, library_name, memory_exporter, metric_reader)
     finally:
         instrumentor_class().uninstrument()
         reset_trace_globals()
