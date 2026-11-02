@@ -36,7 +36,8 @@ jobs:
           git_committer_name: "github-actions"
           git_committer_email: "actions@users.noreply.github.com"
           vcs_release: "false"
-          build: "false"
+          # Runs build_command, which updates uv.lock; Publish builds the package.
+          build: "true"
 
       - name: Write release notes to file
         if: steps.release.outputs.released == 'true'

@@ -10,6 +10,14 @@ version_toml = [
 version_variables = [
     "src/opentelemetry_instrumentation_re/version.py:__version__",
 ]
+# Runs after the version is written and before the release commit. The action's
+# Docker image has no uv; the `build` extra pins it. Only the project's own entry
+# in uv.lock changes: dependencies were tested at their locked versions.
+build_command = """
+    python -m pip install --quiet -e '.[build]'
+    uv lock --upgrade-package "$PACKAGE_NAME"
+"""
+assets = ["uv.lock"]
 
 [semantic_release.changelog]
 changelog_file = "CHANGELOG.md"

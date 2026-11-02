@@ -17,7 +17,7 @@ sequenceDiagram
 
   M->>GH: Push to main (conventional commits)
   GH->>Prep: Trigger
-  Prep->>Prep: Compute version, update pyproject and CHANGELOG, tag
+  Prep->>Prep: Compute version, update pyproject, uv.lock, and CHANGELOG, tag
   Prep->>GH: Push commit and tag
   Prep->>Draft: Create draft with generated notes
   M->>Draft: Review and optionally edit notes
@@ -33,6 +33,7 @@ In more detail:
    When you merge PRs into `main` (or push commits directly), the [Prepare release](.github/workflows/prepare-release.yml) workflow runs. It:
    - Reads [conventional commits](https://www.conventionalcommits.org/) on `main` since the last tag
    - Computes the next [semantic version](https://semver.org/) and writes it to `pyproject.toml` and `src/opentelemetry_instrumentation_re/version.py` (no manual version bump needed)
+   - Updates the project's own version in `uv.lock`, leaving every dependency at its locked version
    - Updates `CHANGELOG.md` and creates a new git tag (e.g. `v0.2.0`)
    - Pushes the version commit and tag to `main`
    - Creates a **draft** GitHub release for that tag with **generated release notes** (from the changelog)
