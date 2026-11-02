@@ -53,7 +53,8 @@ def test_fast_call_records_metric_not_span() -> None:
         reset_trace_globals()
 
 
-def test_default_floor_skips_fast_success() -> None:
+def test_default_floor_skips_fast_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fast_clock(monkeypatch)
     tracer_provider, memory_exporter = TestBase.create_tracer_provider()
     metric_reader = InMemoryMetricReader()
     meter_provider = MeterProvider(metric_readers=[metric_reader])
@@ -235,8 +236,22 @@ def _counter_attr_contains(reader: InMemoryMetricReader, marker: str) -> bool:
     return False
 
 
-def test_fast_error_is_counted_not_spanned(backend: Backend) -> None:
+def _fast_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """1 µs per clock read, so "fast" does not depend on the machine."""
+    mono = {"now": 0}
+
+    def monotonic_ns() -> int:
+        mono["now"] += 1_000
+        return mono["now"]
+
+    monkeypatch.setattr(recorder_mod, "monotonic_ns", monotonic_ns)
+
+
+def test_fast_error_is_counted_not_spanned(
+    backend: Backend, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module, instrumentor_class, library_name = backend
+    _fast_clock(monkeypatch)
     tracer_provider, memory_exporter = TestBase.create_tracer_provider()
     metric_reader = InMemoryMetricReader()
     meter_provider = MeterProvider(metric_readers=[metric_reader])
