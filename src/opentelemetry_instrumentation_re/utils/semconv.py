@@ -1,15 +1,19 @@
-"""Semantic convention attributes for regex instrumentation.
+"""Attribute names for regex instrumentation.
 
-These attribute names follow OpenTelemetry naming: lowercase, dot-delimited
-namespacing, snake_case within components. They are intended to be reusable
-for any regex-like library (any language) when documenting pattern operations.
+The ``re.*`` names are defined by this package. They are not part of the
+OpenTelemetry semantic conventions and may change between releases. They follow
+OpenTelemetry naming: lowercase, dot-delimited, snake_case within components.
+``error.type`` is the semantic-convention attribute.
 """
 
 from __future__ import annotations
 
-# Span attributes for regex operations (stable)
+# Span and metric attributes for regex operations
 RE_PATTERN = "re.pattern"
-"""The regex pattern string (or bytes decoded to string)."""
+"""The regex pattern string when capture is explicitly enabled."""
+
+RE_PATTERN_LENGTH = "re.pattern_length"
+"""Length of the pattern string (non-sensitive)."""
 
 RE_OPERATION = "re.operation"
 """The operation name: search, match, fullmatch, split, finditer, findall, sub, subn."""
@@ -22,3 +26,9 @@ RE_MATCH_COUNT = "re.match_count"
 
 RE_LIBRARY_NAME = "re.library.name"
 """Name of the instrumented regex implementation: re, regex, or google_re2."""
+
+ERROR_TYPE = "error.type"
+"""``<module>.error`` for the backend's pattern error, otherwise the exception class name.
+
+Builtins are unqualified (``TypeError``); other classes include their module.
+"""

@@ -39,8 +39,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         uv-resolution: [highest, lowest-direct]
+        include:
+          # google-re2 1.0 fails to build on these; its tests skip there.
+          - python-version: "3.12"
+            uv-resolution: lowest-direct
+            skip-google-re2: true
+          - python-version: "3.13"
+            uv-resolution: lowest-direct
+            skip-google-re2: true
+          - python-version: "3.14"
+            uv-resolution: lowest-direct
+            skip-google-re2: true
     env:
       UV_PYTHON: ${{ matrix.python-version }}
       UV_RESOLUTION: ${{ matrix.uv-resolution }}
@@ -58,14 +69,8 @@ jobs:
             pyproject.toml
             uv.lock
 
-      # Omit --extra all for lowest-direct to avoid building google-re2 1.0 (no wheels on some platforms)
       - name: Install dependencies
-        run: |
-          if [ "${{ matrix.uv-resolution }}" = "lowest-direct" ]; then
-            uv sync --extra dev --extra test
-          else
-            uv sync --extra dev --extra test --extra all
-          fi
+        run: uv sync --extra dev --extra test --extra regex ${{ !matrix.skip-google-re2 && '--extra google-re2' || '' }}
 
       - name: Log resolved instrumented library versions
         run: |

@@ -53,7 +53,7 @@ jobs:
         run: uv build
 
       - name: Install dependencies
-        run: uv sync --locked --extra dev --extra test --extra instruments
+        run: uv sync --locked --extra dev --extra test --extra regex --extra google-re2
 
       - name: Ruff (lint)
         run: uv run ruff check .

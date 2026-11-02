@@ -51,7 +51,7 @@ jobs:
         run: |
           uv venv .venv-redist
           wheel=$(echo dist/*.whl)
-          uv pip install --python .venv-redist/bin/python "${wheel}[test,instruments]"
+          uv pip install --python .venv-redist/bin/python "${wheel}[test,regex,google-re2]"
 
       - name: Run tests
         run: .venv-redist/bin/pytest tests/ -v

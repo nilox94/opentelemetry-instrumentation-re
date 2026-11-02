@@ -1,9 +1,12 @@
 # Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Pull requests are welcome.
 
-We use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages; the format is used by our release process to determine version bumps.
-See [RELEASING.md](RELEASING.md) for how releases and publishing work.
+Commit messages use [Conventional Commits](https://www.conventionalcommits.org/). The release process reads that format when it chooses the next version. See [RELEASING.md](RELEASING.md).
+
+## Instrumentation
+
+This package does not register `opentelemetry_instrumentor` entry points and it has no `instruments` extra. Installing it does not patch `re`. Call `ReInstrumentor().instrument()` (or `RegexInstrumentor` / `GoogleRe2Instrumentor`) yourself. Auto-instrumentation and `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` do not apply.
 
 ## Development Setup
 
@@ -12,12 +15,12 @@ See [RELEASING.md](RELEASING.md) for how releases and publishing work.
 git clone https://github.com/nilox94/opentelemetry-instrumentation-re.git
 cd opentelemetry-instrumentation-re
 
-uv sync --all-extras
+uv sync --extra dev --extra test --extra regex --extra google-re2
 ```
 
 ## Git Hooks (prek)
 
-[prek](https://prek.j178.dev/) runs checks before each commit (Ruff and basic file checks). It's included as a dev dependency, so after `uv sync --extra dev` you can run:
+[prek](https://prek.j178.dev/) runs Ruff and basic file checks before each commit. It is a dev dependency. After `uv sync --extra dev`:
 
 ```bash
 # Install git hooks and prepare hook environments (one-time per clone)
@@ -43,6 +46,17 @@ uv run pytest tests/
 # Run with coverage
 uv run pytest --cov=src/opentelemetry_instrumentation_re tests/
 ```
+
+## Benchmarks
+
+[BENCHMARKS.md](BENCHMARKS.md) is how to read `benchmarks/bench.py`. From the repo root, after the test extra is installed (`regex` and `google-re2` are optional):
+
+```bash
+uv sync --extra test --extra regex --extra google-re2
+uv run python benchmarks/bench.py
+```
+
+A pull request that changes the hot path gets the `benchmark` label before it is merged. Paste the job's `## Snapshot` block into `BENCHMARKS.md` on the same pull request.
 
 ## Linting and Type Checking
 
