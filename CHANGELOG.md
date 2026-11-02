@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-11-02)
+
+### Features
+
+- Production defaults for re, regex, and google-re2
+  ([#4](https://github.com/nilox94/opentelemetry-instrumentation-re/pull/4),
+  [`fa6de94`](https://github.com/nilox94/opentelemetry-instrumentation-re/commit/fa6de94b13aed67b55f00e411ff66f8723a26c35))
+
+
 ## Unreleased
 
 ### Changed

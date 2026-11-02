@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "opentelemetry-instrumentation-re"
-version = "1.0.1"
+version = "1.1.0"
 description = "OpenTelemetry instrumentation for Python re, regex, and google-re2"
 readme = "README.md"
 license = "Apache-2.0"
