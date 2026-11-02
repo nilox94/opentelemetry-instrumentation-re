@@ -508,22 +508,37 @@ def test_finditer_iteration_error(instrumented_backend: InstrumentedBackend) -> 
     )
 
 
-def test_abandoned_finditer_finalizes(instrumented_backend: InstrumentedBackend) -> None:
+def test_abandoned_finditer_records_at_next_call(
+    instrumented_backend: InstrumentedBackend,
+) -> None:
     module, library_name, memory_exporter, metric_reader = instrumented_backend
     iterator = module.finditer(r"\d", "a1b2")
     ref = weakref.ref(iterator)
-    assert memory_exporter.get_finished_spans() == ()
     del iterator
     gc.collect()
     assert ref() is None
+    assert memory_exporter.get_finished_spans() == ()
+    assert histogram_point_count(metric_reader) == 0
+    module.search(r"x", "x")
     span = get_span_by_name(memory_exporter.get_finished_spans(), f"{library_name}.finditer")
     assert span.attributes is not None
     assert span.attributes["re.operation"] == "finditer"
-    assert histogram_point_count(metric_reader) == 1
+    assert histogram_point_count(metric_reader) == 2
+
+
+def test_finditer_methods_match_engine(instrumented_backend: InstrumentedBackend) -> None:
+    module, library_name, _memory_exporter, _metric_reader = instrumented_backend
+    iterator = module.finditer(r"\d", "a1b2")
+    is_generator = library_name == "google_re2"
+    assert hasattr(iterator, "close") is is_generator
+    assert hasattr(iterator, "throw") is is_generator
+    list(iterator)
 
 
 def test_finditer_close_finishes_once(instrumented_backend: InstrumentedBackend) -> None:
     module, library_name, memory_exporter, metric_reader = instrumented_backend
+    if library_name != "google_re2":
+        pytest.skip("only google-re2 returns a generator with close()")
     iterator = module.finditer(r"\d", "a1b2")
     iterator.close()
     iterator.close()
@@ -722,8 +737,10 @@ def test_reinstrument_revives_proxy(backend: Backend) -> None:
         reset_trace_globals()
 
 
-def test_finditer_throw_without_inner_finishes(instrumented_backend: InstrumentedBackend) -> None:
-    module, library_name, memory_exporter, metric_reader = instrumented_backend
+def test_finditer_plain_iterator_has_no_close_or_throw(
+    instrumented_backend: InstrumentedBackend,
+) -> None:
+    module, _library_name, _memory_exporter, _metric_reader = instrumented_backend
 
     class NoThrow:
         def __iter__(self) -> NoThrow:
@@ -734,17 +751,35 @@ def test_finditer_throw_without_inner_finishes(instrumented_backend: Instrumente
 
     traced = core._MODULE_STATE[id(module)][0]
     iterator: Any = core._execute(traced, "finditer", r"\d", "abcd", lambda: NoThrow())
+    assert not hasattr(iterator, "close")
+    assert not hasattr(iterator, "throw")
+
+
+def test_finditer_injected_throw_is_not_regex_error(
+    instrumented_backend: InstrumentedBackend,
+) -> None:
+    module, library_name, memory_exporter, metric_reader = instrumented_backend
+
+    class Rethrows:
+        def __iter__(self) -> Rethrows:
+            return self
+
+        def __next__(self) -> str:
+            return "x"
+
+        def throw(self, exc: BaseException) -> str:
+            raise exc
+
+    traced = core._MODULE_STATE[id(module)][0]
+    iterator: Any = core._execute(traced, "finditer", r"\d", "abcd", lambda: Rethrows())
     err = ValueError("x")
     with pytest.raises(ValueError) as exc_info:
         iterator.throw(err)
     assert exc_info.value is err
     span = get_span_by_name(memory_exporter.get_finished_spans(), f"{library_name}.finditer")
-    assert span.status.status_code == StatusCode.ERROR
-    assert span.status.description in (None, "")
-    assert not any(event.name == "exception" for event in span.events)
+    assert span.status.status_code != StatusCode.ERROR
     assert span.attributes is not None
-    assert span.attributes.get("error.type") == "ValueError"
-    _assert_marker_absent_from_span(span, "x", attributes=False)
+    assert "error.type" not in span.attributes
     assert histogram_point_count(metric_reader) == 1
     assert (
         error_count(
@@ -753,8 +788,35 @@ def test_finditer_throw_without_inner_finishes(instrumented_backend: Instrumente
             library=library_name,
             error_type="ValueError",
         )
-        == 1
+        == 0
     )
+
+
+def test_re2_finditer_throw_forwards_to_generator(backend: Backend) -> None:
+    module, instrumentor_class, library_name = backend
+    if library_name != "google_re2":
+        pytest.skip("only google-re2 returns a generator")
+    metric_reader = InMemoryMetricReader()
+    inst = instrumentor_class()
+    inst.instrument(
+        meter_provider=MeterProvider(metric_readers=[metric_reader]), histogram_floor_ms=0
+    )
+    try:
+        iterator = module.finditer(r"\d", "a1b2")
+        assert next(iterator).group() == "1"
+        err = KeyError("stop")
+        with pytest.raises(KeyError) as exc_info:
+            iterator.throw(err)
+        assert exc_info.value is err
+        assert histogram_point_count(metric_reader) == 1
+        assert (
+            error_count(
+                metric_reader, operation="finditer", library=library_name, error_type="KeyError"
+            )
+            == 0
+        )
+    finally:
+        inst.uninstrument()
 
 
 def test_finditer_swallowed_throw_stays_open(instrumented_backend: InstrumentedBackend) -> None:
@@ -786,6 +848,9 @@ def test_finditer_close_error_finishes(instrumented_backend: InstrumentedBackend
 
         def __next__(self) -> str:
             return "x"
+
+        def throw(self, exc: BaseException) -> str:
+            raise exc
 
         def close(self) -> None:
             raise RuntimeError("close failed")

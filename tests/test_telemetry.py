@@ -5,6 +5,7 @@ from __future__ import annotations
 import gc
 import logging
 import re
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -160,6 +161,28 @@ def test_capture_pattern_truncated() -> None:
         span = memory_exporter.get_finished_spans()[0]
         assert span.attributes is not None
         assert span.attributes.get("re.pattern") == "abcd"
+    finally:
+        inst.uninstrument()
+        reset_trace_globals()
+
+
+def test_capture_pattern_max_len_zero_omits_pattern() -> None:
+    tracer_provider, memory_exporter = TestBase.create_tracer_provider()
+    reset_trace_globals()
+    trace_api.set_tracer_provider(tracer_provider)
+    inst = ReInstrumentor()
+    inst.instrument(
+        tracer_provider=tracer_provider,
+        span_threshold_ms=0,
+        capture_pattern=True,
+        capture_pattern_max_len=0,
+    )
+    try:
+        re.search("abcdefgh", "abcdefgh")
+        span = memory_exporter.get_finished_spans()[0]
+        assert span.attributes is not None
+        assert "re.pattern" not in span.attributes
+        assert span.attributes.get("re.pattern_length") == 8
     finally:
         inst.uninstrument()
         reset_trace_globals()
@@ -664,7 +687,7 @@ def test_telemetry_failure_logged_once_and_not_recursive() -> None:
         inst.uninstrument()
 
 
-def test_finditer_collected_while_recording_is_dropped() -> None:
+def test_finditer_collected_while_recording_is_deferred() -> None:
     tracer_provider, memory_exporter = TestBase.create_tracer_provider()
     metric_reader = InMemoryMetricReader()
     meter_provider = MeterProvider(metric_readers=[metric_reader])
@@ -686,9 +709,70 @@ def test_finditer_collected_while_recording_is_dropped() -> None:
             recorder_mod._RECORDING.reset(token)
         assert histogram_point_count(metric_reader) == 0
         assert memory_exporter.get_finished_spans() == ()
-        iterator = re.finditer(r"\d", "a1")
-        del iterator
-        gc.collect()
-        assert histogram_point_count(metric_reader) == 1
+        re.search(r"\d", "a1")
+        assert histogram_point_count(metric_reader) == 2
+        assert [span.name for span in memory_exporter.get_finished_spans()] == [
+            "re.finditer",
+            "re.search",
+        ]
     finally:
         inst.uninstrument()
+
+
+def test_finalizer_never_records_inline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A GC pass inside proxy creation must not run span processors there."""
+
+    class CompilesOnEnd(SpanProcessor):
+        def __init__(self) -> None:
+            self.count = 0
+
+        def on_start(self, span, parent_context=None) -> None:
+            return None
+
+        def on_end(self, span) -> None:
+            self.count += 1
+            re.compile(f"on_end pattern {self.count} {time.perf_counter_ns()}")
+
+    processor = CompilesOnEnd()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(processor)
+    inst = ReInstrumentor()
+    inst.uninstrument()
+    inst.instrument(tracer_provider=tracer_provider, span_threshold_ms=0)
+    register = core_mod._register_proxy
+
+    def register_after_gc(module_key: int, proxy: object) -> None:
+        gc.collect()
+        register(module_key, proxy)
+
+    def scenario() -> None:
+        iterator = re.finditer(r"\d", "a1b2")
+        next(iterator)
+        cycle: list[object] = [iterator]
+        cycle.append(cycle)
+        del iterator, cycle
+        re.compile(f"fresh pattern {time.perf_counter_ns()}")
+
+    monkeypatch.setattr(core_mod, "_register_proxy", register_after_gc)
+    try:
+        worker = threading.Thread(target=scenario, daemon=True)
+        worker.start()
+        worker.join(timeout=5)
+        assert not worker.is_alive(), "finalizer recorded inside the proxy-cache lock"
+        monkeypatch.setattr(core_mod, "_register_proxy", register)
+        assert processor.count == 0
+        re.search(r"\d", "a1")
+        assert processor.count == 2
+    finally:
+        inst.uninstrument()
+
+
+def test_pending_finishes_are_bounded() -> None:
+    finished: list[BaseException | None] = []
+    core_mod._drain_pending()
+    for _ in range(core_mod._PENDING_MAX + 10):
+        core_mod._on_iterator_collected(finished.append)
+    assert len(core_mod._PENDING_FINISHES) == core_mod._PENDING_MAX
+    core_mod._drain_pending()
+    assert finished == [None] * core_mod._PENDING_MAX
+    assert not core_mod._PENDING_FINISHES

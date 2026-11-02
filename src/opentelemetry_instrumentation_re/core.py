@@ -11,6 +11,7 @@ import sys
 import threading
 import types
 import weakref
+from collections import deque
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, Callable, SupportsIndex, TypeVar, cast
 
@@ -122,14 +123,20 @@ class _ProxyCache:
         self._by_id: weakref.WeakValueDictionary[int, Any] = weakref.WeakValueDictionary()
 
     def get_or_create(self, compiled: Any, factory: Callable[[Any], Any]) -> Any:
-        """Return the proxy for ``compiled``, creating it at most once."""
+        """Return the proxy for ``compiled``. Concurrent misses keep the first one stored."""
+        with self._lock:
+            existing = self._get(compiled)
+        if existing is not None:
+            return existing
+        # Outside the lock: the factory runs Python code, and anything it calls
+        # back into (a span processor, a log handler) may compile a pattern.
+        proxy = factory(compiled)
         with self._lock:
             existing = self._get(compiled)
             if existing is not None:
                 return existing
-            proxy = factory(compiled)
             self._set(compiled, proxy)
-            return proxy
+        return proxy
 
     def _get(self, compiled: Any) -> Any | None:
         try:
@@ -303,32 +310,31 @@ def _wrap_repl(
     return tuple(mutated), kwargs, clock
 
 
-def _exception_from_throw(typ: Any, val: Any, tb: Any) -> BaseException:
-    """Normalize ``generator.throw`` arguments to one exception instance."""
-    if isinstance(typ, BaseException):
-        if tb is not None:
-            return typ.with_traceback(tb)
-        return typ
-    if isinstance(typ, type) and issubclass(typ, BaseException):
-        if val is None:
-            exc = typ()
-        elif isinstance(val, (typ, BaseException)):
-            exc = val
-        else:
-            exc = typ(val)
-        if tb is not None:
-            return exc.with_traceback(tb)
-        return exc
-    return TypeError("exceptions must derive from BaseException")
+# Finishes of abandoned finditer iterators, recorded at the next drain point.
+# The garbage collector runs finalizers at arbitrary points, including while
+# this package, the SDK, or the application holds a non-reentrant lock, so the
+# finalizer itself only appends. Full: the oldest entry is dropped.
+_PENDING_MAX = 1024
+_PENDING_FINISHES: deque[Callable[[BaseException | None], None]] = deque(maxlen=_PENDING_MAX)
 
 
 def _on_iterator_collected(finish: Callable[[BaseException | None], None]) -> None:
     """Finalize callback. Must not be a bound method: that would keep the iterator alive."""
-    finish(None)
+    _PENDING_FINISHES.append(finish)
+
+
+def _drain_pending() -> None:
+    """Record queued finishes. Call only where recording inline is already allowed."""
+    while True:
+        try:
+            finish = _PENDING_FINISHES.popleft()
+        except IndexError:
+            return
+        finish(None)
 
 
 class _TracedIterator:
-    """Iterator wrapper. Duration is time spent inside ``next``/``close``/``throw`` only."""
+    """Iterator wrapper. Duration is construction plus time spent inside ``next``."""
 
     def __init__(
         self,
@@ -372,18 +378,18 @@ class _TracedIterator:
         self._add(started)
         return value
 
+
+class _TracedGenerator(_TracedIterator):
+    """Wrapper for a generator (google-re2). ``close``/``throw`` exist only when the inner has them."""
+
     def close(self) -> None:
-        closer = getattr(self._iterator, "close", None)
+        generator: Any = self._iterator
         if self._done:
-            if callable(closer):
-                closer()
-            return
-        if not callable(closer):
-            self._complete(None)
+            generator.close()
             return
         started = recorder_mod.monotonic_ns()
         try:
-            closer()
+            generator.close()
         except BaseException as exc:
             self._add(started)
             self._complete(exc)
@@ -391,19 +397,17 @@ class _TracedIterator:
         self._add(started)
         self._complete(None)
 
-    def throw(self, typ: Any = None, val: Any = None, tb: Any = None) -> Any:
-        exc = _exception_from_throw(typ, val, tb)
-        thrower = getattr(self._iterator, "throw", None)
-        if not callable(thrower):
-            self._complete(exc)
-            raise exc
+    def throw(self, *args: Any) -> Any:
+        generator: Any = self._iterator
         started = recorder_mod.monotonic_ns()
         try:
+            # Forward the caller's arity: the three-argument form warns from 3.12.
             # A swallowed throw resumes iteration, so telemetry stays open.
-            value = thrower(typ, val, tb)
-        except BaseException as inner:
+            value = generator.throw(*args)
+        except BaseException:
             self._add(started)
-            self._complete(inner)
+            # The caller injected the exception; the engine did not fail.
+            self._complete(None)
             raise
         self._add(started)
         return value
@@ -482,6 +486,8 @@ def _execute(
         return call()
     if from_method and profile.skip_one_method and _SKIP_DEPTH.get():
         return _consume_skip(call)
+    if _PENDING_FINISHES:
+        _drain_pending()
 
     start_epoch, start_mono = capture_start()
     parent_context = context_api.get_current()
@@ -518,9 +524,10 @@ def _execute(
             finished = True
             record(exc_inner, bucket[0])
 
+        wrapper = _TracedGenerator if hasattr(raw_iterator, "throw") else _TracedIterator
         return cast(
             "_R",
-            _TracedIterator(cast("Iterator[Any]", raw_iterator), bucket=bucket, finish=finish),
+            wrapper(cast("Iterator[Any]", raw_iterator), bucket=bucket, finish=finish),
         )
 
     try:
@@ -699,6 +706,8 @@ def _record_fast(
         elapsed = 0
     if exc is None and elapsed < recorder.quiet_below_ns:
         return
+    if _PENDING_FINISHES:
+        _drain_pending()
     result_attributes = None
     if exc is None and operation in ("findall", "subn"):
         try:

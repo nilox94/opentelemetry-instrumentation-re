@@ -133,8 +133,8 @@ class OperationRecorder:
         emit_span = elapsed_ns >= self.span_threshold_ns
         if exc is None and not record_duration and not emit_span:
             return
-        # Also reached from an abandoned finditer's finalizer, which the garbage
-        # collector can run inside histogram.record while the SDK holds its lock.
+        # A meter, span processor, or log handler can call back into regex while
+        # this thread records, possibly holding a non-reentrant lock.
         if _RECORDING.get():
             return
 
@@ -192,10 +192,10 @@ class OperationRecorder:
         pattern_len = self._pattern_length(pattern_source)
         if pattern_len is not None:
             span_attrs[RE_PATTERN_LENGTH] = pattern_len
-        if self.config.capture_pattern:
+        max_len = self.config.capture_pattern_max_len
+        if self.config.capture_pattern and max_len > 0:
             pattern_text = self._pattern_text(pattern_source)
             if pattern_text is not None:
-                max_len = self.config.capture_pattern_max_len
                 span_attrs[RE_PATTERN] = pattern_text[:max_len]
 
         if result_attributes:
