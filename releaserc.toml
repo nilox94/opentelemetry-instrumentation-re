@@ -19,7 +19,7 @@ build_command = """
 """
 assets = ["uv.lock"]
 
-[semantic_release.changelog]
+[semantic_release.changelog.default_templates]
 changelog_file = "CHANGELOG.md"
 
 [semantic_release.publish]
