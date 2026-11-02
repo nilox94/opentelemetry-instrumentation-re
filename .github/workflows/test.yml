@@ -41,14 +41,17 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         uv-resolution: [highest, lowest-direct]
-        exclude:
-          # error: Failed to build `google-re2==1.0`
+        include:
+          # google-re2 1.0 fails to build on these; its tests skip there.
           - python-version: "3.12"
             uv-resolution: lowest-direct
+            skip-google-re2: true
           - python-version: "3.13"
             uv-resolution: lowest-direct
+            skip-google-re2: true
           - python-version: "3.14"
             uv-resolution: lowest-direct
+            skip-google-re2: true
     env:
       UV_PYTHON: ${{ matrix.python-version }}
       UV_RESOLUTION: ${{ matrix.uv-resolution }}
@@ -67,7 +70,7 @@ jobs:
             uv.lock
 
       - name: Install dependencies
-        run: uv sync --extra dev --extra test --extra regex --extra google-re2
+        run: uv sync --extra dev --extra test --extra regex ${{ !matrix.skip-google-re2 && '--extra google-re2' || '' }}
 
       - name: Log resolved instrumented library versions
         run: |

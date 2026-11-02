@@ -22,5 +22,5 @@ def test_version_matches_pyproject() -> None:
         if line.startswith("version = "):
             version = line.split("=", 1)[1].strip().strip('"')
             break
-    assert version == "1.1.0"
+    assert version is not None
     assert __version__ == version
