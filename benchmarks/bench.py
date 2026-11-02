@@ -454,21 +454,25 @@ def _print_fast_notes(rows: dict[str, Row], bare: Sample, keyword_gap: Sample) -
     print(f"- compile cache hit: wrapper {_delta(compiled.noop, compiled.raw)}, sdk − noop {meter}")
 
 
-def _per_match(many: Row, few: Row, few_matches: int) -> float:
-    """Added wrapper µs per extra match, from the many-match and short rows."""
+def _per_match(many: Row, few: Row, few_matches: int) -> tuple[float, float]:
+    """Wrapper and engine µs per extra match, from the many-match and short rows."""
     many_added = many.noop.median - many.raw.median
     few_added = few.noop.median - few.raw.median
-    return (many_added - few_added) / (_MANY - few_matches)
+    extra = _MANY - few_matches
+    return (many_added - few_added) / extra, (many.raw.median - few.raw.median) / extra
 
 
 def _per_match_line(rows: dict[str, Row]) -> str:
-    finditer = _per_match(
+    finditer, finditer_engine = _per_match(
         rows[f"module finditer, {_MANY:,} matches"], rows["module finditer, consume"], 5
     )
-    repl = _per_match(
+    repl, repl_engine = _per_match(
         rows[f"module sub, callable repl, {_MANY:,} matches"], rows["module sub, callable repl"], 3
     )
-    return f"finditer {finditer:.3f} µs, callable repl {repl:.3f} µs"
+    return (
+        f"finditer wrapper {finditer:.3f} µs, engine {finditer_engine:.3f} µs; "
+        f"callable repl wrapper {repl:.3f} µs, engine {repl_engine:.3f} µs"
+    )
 
 
 def _finditer_many() -> None:
@@ -480,13 +484,9 @@ def _sub_many() -> None:
 
 
 def _finditer_first() -> None:
-    found = re.finditer(r"\d", _FINDITER)
-    next(found, None)
-    # close() records the histogram here. Dropping the iterator would record
-    # it later, from a GC finalizer, inside whichever sample happened to collect.
-    close = getattr(found, "close", None)
-    if close is not None:
-        close()
+    # Dropping the iterator queues its telemetry (refcounting runs the finalizer
+    # here); the next sample's finditer records it. That is the path real code takes.
+    next(re.finditer(r"\d", _FINDITER), None)
 
 
 def _finditer_consume() -> None:
@@ -495,6 +495,23 @@ def _finditer_consume() -> None:
 
 def _compile_hit() -> None:
     re.compile(r"\d+")
+
+
+def _compile_held(inst: Any) -> Row:
+    """``compile`` while the caller keeps the pattern, so the existing proxy is returned."""
+
+    def factory() -> Callable[[], None]:
+        kept = re.compile(r"\d+")
+        if re.compile(r"\d+") is not kept:
+            raise RuntimeError("compile did not return the held proxy")
+
+        def run(_kept: Any = kept) -> None:
+            re.compile(r"\d+")
+
+        return run
+
+    raw_s, noop_s, sdk_s = _three(inst, _compile_hit, factory)
+    return Row("module compile, cache hit", raw_s, noop_s, sdk_s)
 
 
 def _batch_provider() -> TracerProvider:
@@ -560,29 +577,42 @@ def _telemetry(inst: ReInstrumentor, text: str, sdk_search: Sample) -> Row:
     return batch
 
 
-def _engine(module_name: str, instrumentor: Any) -> Row | None:
+def _engine(module_name: str, instrumentor: Any, *, module_level: bool = False) -> Row | None:
     try:
         module = importlib.import_module(module_name)
     except ImportError:
-        print(f"- {module_name}: not installed")
+        if not module_level:
+            print(f"- {module_name}: not installed")
         return None
     inst = instrumentor()
     text = "abc123xyz"
-    raw_pattern = module.compile(r"\d+")
+    if module_level:
 
-    def raw() -> None:
-        raw_pattern.search(text)
+        def raw() -> None:
+            module.search(r"\d+", text)
 
-    def factory() -> Callable[[], None]:
-        compiled = module.compile(r"\d+")
+        def factory() -> Callable[[], None]:
+            return raw
 
-        def run() -> None:
-            compiled.search(text)
+        label = f"{module_name} module search, 9 B"
+    else:
+        raw_pattern = module.compile(r"\d+")
 
-        return run
+        def raw() -> None:
+            raw_pattern.search(text)
+
+        def factory() -> Callable[[], None]:
+            compiled = module.compile(r"\d+")
+
+            def run() -> None:
+                compiled.search(text)
+
+            return run
+
+        label = f"{module_name} compiled search, 9 B"
 
     raw_s, noop_s, sdk_s = _three(inst, raw, factory, span_threshold_ms=10)
-    return Row(f"{module_name} compiled search, 9 B", raw_s, noop_s, sdk_s)
+    return Row(label, raw_s, noop_s, sdk_s)
 
 
 def _rate(fn: Callable[[], None], threads: int, calls_each: int) -> float:
@@ -816,6 +846,7 @@ def _pieces(raw: Sample, wrapped: Sample) -> None:
 def _print_snapshot(
     rows: dict[str, Row],
     batch: Row,
+    engine_rows: list[Row],
     raw_rate: Sample,
     sdk_rate: Sample,
 ) -> None:
@@ -825,6 +856,9 @@ def _print_snapshot(
         rows["compiled search, 9 B, floor 0"],
         rows["module finditer, consume"],
         rows[f"module finditer, {_MANY:,} matches"],
+        rows["module compile, cache hit"],
+        rows["module compile, new proxy"],
+        *engine_rows,
         batch,
     )
     _section("Snapshot")
@@ -837,7 +871,7 @@ def _print_snapshot(
     print("| --- | --- | --- |")
     for row in cases:
         print(f"| {row.label} | {_delta(row.noop, row.raw)} | {_delta(row.sdk, row.noop)} |")
-    print(f"per match, wrapper: {_per_match_line(rows)}")
+    print(f"per match: {_per_match_line(rows)}")
     print(
         "throughput, 1 thread, short-string compiled search, default floor, calls/s: "
         f"raw {_rate_cell(raw_rate)}  sdk {_rate_cell(sdk_rate)}"
@@ -926,7 +960,8 @@ def main() -> None:
         _callable(inst, "module finditer, consume", _finditer_consume),
         _callable(inst, f"module finditer, {_MANY:,} matches", _finditer_many),
         _callable(inst, "module finditer, first match", _finditer_first),
-        _callable(inst, "module compile, cache hit", _compile_hit),
+        _compile_held(inst),
+        _callable(inst, "module compile, new proxy", _compile_hit),
     ]
     _section("Hot path")
     _print_table(rows)
@@ -946,6 +981,7 @@ def main() -> None:
         for row in (
             _engine("regex", RegexInstrumentor),
             _engine("re2", GoogleRe2Instrumentor),
+            _engine("re2", GoogleRe2Instrumentor, module_level=True),
         )
         if row is not None
     ]
@@ -954,7 +990,8 @@ def main() -> None:
     raw_rate, sdk_rate = _throughput(inst, short)
     _retention(inst, short)
     _pieces(found["compiled search, 9 B"].raw, found["compiled search, 9 B"].noop)
-    _print_snapshot(found, batch, raw_rate, sdk_rate)
+    re2_module = [row for row in engine_rows if row.label == "re2 module search, 9 B"]
+    _print_snapshot(found, batch, re2_module, raw_rate, sdk_rate)
 
 
 if __name__ == "__main__":
